@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../data/local/demo_seeder.dart';
+import '../../data/local/hive_boxes.dart';
 import '../../data/models/patient.dart';
 import '../../data/models/treatment.dart';
 import '../../data/repositories/clinic_repository.dart';
@@ -42,10 +44,22 @@ class ClinicProvider extends ChangeNotifier {
   bool get isLoaded => _loaded;
 
   Future<void> load() async {
+    await _maybeSeedDemo();
     _patients = _repo.getPatients()..sort((a, b) => a.name.compareTo(b.name));
     _treatments = _repo.getTreatments();
     _loaded = true;
     notifyListeners();
+  }
+
+  /// Demo verisini yalnızca bir kez oluşturur (meta_box 'demo_v1' bayrağı).
+  /// Kaldırmak istersen bu çağrıyı silebilirsin.
+  Future<void> _maybeSeedDemo() async {
+    if (HiveBoxes.metaBox.get('demo_v1') == true) return;
+    try {
+      await DemoSeeder.seed(_repo);
+    } finally {
+      await HiveBoxes.metaBox.put('demo_v1', true);
+    }
   }
 
   // ---------------------------------------------------------------------------

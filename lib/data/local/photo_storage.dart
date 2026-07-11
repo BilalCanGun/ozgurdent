@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -32,6 +33,20 @@ class PhotoStorage {
     final ext = picked.path.split('.').last;
     final dest = '${photosDir.path}/${_uuid.v4()}.$ext';
     await File(picked.path).copy(dest);
+    return dest;
+  }
+
+  /// Uygulama içindeki (asset) bir görseli kalıcı foto klasörüne kopyalar.
+  /// Demo verisi için kullanılır. Kaydedilen dosyanın yolunu döndürür.
+  static Future<String> saveAssetImage(String assetPath) async {
+    final data = await rootBundle.load(assetPath);
+    final dir = await getApplicationDocumentsDirectory();
+    final photosDir = Directory('${dir.path}/tedavi_foto');
+    if (!await photosDir.exists()) {
+      await photosDir.create(recursive: true);
+    }
+    final dest = '${photosDir.path}/${_uuid.v4()}.png';
+    await File(dest).writeAsBytes(data.buffer.asUint8List());
     return dest;
   }
 

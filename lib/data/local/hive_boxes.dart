@@ -9,13 +9,16 @@ class HiveBoxes {
 
   static const String patients = 'patients_box';
   static const String treatments = 'treatments_box';
+  static const String meta = 'meta_box';
 
   static late Box patientsBox;
   static late Box treatmentsBox;
+  static late Box metaBox;
 
   static Future<void> init() async {
     await Hive.initFlutter();
     patientsBox = await Hive.openBox(patients);
     treatmentsBox = await Hive.openBox(treatments);
+    metaBox = await Hive.openBox(meta);
   }
 }
