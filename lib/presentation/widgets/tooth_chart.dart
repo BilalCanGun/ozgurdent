@@ -206,12 +206,17 @@ class _ToothChartState extends State<ToothChart> {
             ToothModelIcon(
                 number: number, selected: selected, size: w * 0.82),
             SizedBox(height: w * 0.08),
-            Text(
-              number,
-              style: TextStyle(
-                fontSize: fontSize,
-                fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.textSecondary,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                number,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : AppColors.textSecondary,
+                ),
               ),
             ),
           ],

@@ -35,6 +35,18 @@ class OzgurDentApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [Locale('tr', 'TR')],
+        // Klavye açıkken boş bir yere dokununca klavyeyi kapat (tüm ekranlarda).
+        builder: (context, child) {
+          return GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            excludeFromSemantics: true,
+            onTap: () {
+              final focus = FocusManager.instance.primaryFocus;
+              if (focus != null && focus.hasFocus) focus.unfocus();
+            },
+            child: child,
+          );
+        },
         home: const HomeShell(),
       ),
     );
