@@ -1,15 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/procedure_catalog.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../data/local/photo_storage.dart';
 import '../../data/models/procedure_type.dart';
 import '../../data/models/treatment.dart';
 import '../providers/clinic_provider.dart';
 import '../widgets/app_card.dart';
 import '../widgets/tooth_chart.dart';
+import 'photo_viewer_screen.dart';
 
 /// İşlem (ve aynı zamanda randevu) ekleme / düzenleme ekranı.
 class TreatmentFormScreen extends StatefulWidget {
@@ -40,6 +45,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
 
   DateTime _date = DateTime.now();
   bool _isPaid = false;
+  List<String> _photos = [];
 
   Treatment? _editing;
 
@@ -70,6 +76,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         _noteCtrl.text = t.note;
         _date = t.appointmentDate;
         _isPaid = t.isPaid;
+        _photos = [...t.photos];
       }
     }
 
@@ -122,7 +129,9 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         ],
       ),
       bottomNavigationBar: _bottomBar(),
-      body: Center(
+      body: SafeArea(
+        bottom: false,
+        child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
           child: Form(
@@ -178,6 +187,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
                 ),
                 const SizedBox(height: 14),
                 AppCard(
+                  padding: const EdgeInsets.all(10),
                   child: ToothChart(
                     selected: _teeth,
                     onChanged: (s) => setState(() => _teeth = s),
@@ -227,6 +237,38 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
                 const SizedBox(height: 10),
                 _dateTimePickers(),
                 const SizedBox(height: 24),
+                Row(
+                  children: [
+                    _sectionTitle('Fotoğraflar'),
+                    const SizedBox(width: 8),
+                    if (_photos.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${_photos.length}',
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'İşlemin öncesi/sonrası fotoğraflarını ekle.',
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                _photoSection(),
+                const SizedBox(height: 24),
                 _sectionTitle('Not & Ödeme'),
                 const SizedBox(height: 10),
                 TextFormField(
@@ -243,6 +285,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -642,6 +685,160 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
     );
   }
 
+  Widget _photoSection() {
+    return SizedBox(
+      height: 110,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _addPhotoTile(),
+          for (int i = 0; i < _photos.length; i++) _photoThumb(i),
+        ],
+      ),
+    );
+  }
+
+  Widget _addPhotoTile() {
+    return GestureDetector(
+      onTap: _pickPhotoSource,
+      child: Container(
+        width: 100,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.4),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.add_a_photo_outlined,
+                color: AppColors.primary, size: 30),
+            SizedBox(height: 6),
+            Text(
+              'Ekle',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _photoThumb(int i) {
+    return GestureDetector(
+      onTap: () => _openViewer(i),
+      child: Container(
+        width: 100,
+        margin: const EdgeInsets.only(right: 12),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(File(_photos[i]), fit: BoxFit.cover),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: GestureDetector(
+                onTap: () => _removePhoto(i),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close,
+                      color: Colors.white, size: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openViewer(int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PhotoViewerScreen(
+          photos: _photos,
+          initialIndex: index,
+          onDelete: (i) => _removePhoto(i, deleteFile: true),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickPhotoSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined,
+                  color: AppColors.primary),
+              title: const Text('Kamera ile çek'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined,
+                  color: AppColors.primary),
+              title: const Text('Galeriden seç'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    try {
+      final path = await PhotoStorage.capture(source);
+      if (path != null) setState(() => _photos.add(path));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fotoğraf eklenemedi.')),
+        );
+      }
+    }
+  }
+
+  void _removePhoto(int i, {bool deleteFile = false}) {
+    if (i < 0 || i >= _photos.length) return;
+    final path = _photos[i];
+    setState(() => _photos.removeAt(i));
+    if (deleteFile) PhotoStorage.delete(path);
+  }
+
   Widget _bottomBar() {
     final shares = _shares;
     return SafeArea(
@@ -708,6 +905,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
       appointmentDate: _date,
       note: _noteCtrl.text.trim(),
       isPaid: _isPaid,
+      photos: _photos,
       createdAt: _editing?.createdAt ?? DateTime.now(),
     );
 

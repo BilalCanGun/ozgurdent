@@ -59,12 +59,16 @@ dependencies:
   # Uygulama dizini (fotoğrafları kalıcı saklamak için)
   path_provider: ^2.1.4
 
-  # Animasyonlu alt menü (notch)
-  animated_notch_bottom_bar: ^1.0.3
+  # Alt menü (floating/dock, sabit)
+  flutter_floating_bottom_bar: ^1.2.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # Uygulama ikonu ve splash ekranı üreticileri
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -83,6 +87,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/images/
 
   fonts:
     - family: Poppins
@@ -126,3 +133,26 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Uygulama ikonu üretimi: `dart run flutter_launcher_icons`
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+
+# Splash ekranı üretimi: `dart run flutter_native_splash:create`
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "assets/icon/splash_logo.png"
+  android_12:
+    color: "#FFFFFF"
+    image: "assets/icon/splash_logo.png"
+  ios: true
+  android: true

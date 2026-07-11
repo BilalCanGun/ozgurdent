@@ -8,7 +8,8 @@ plugins {
 android {
     namespace = "com.example.ozgurdent"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // image_picker / path_provider gibi eklentiler NDK 27 istiyor.
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

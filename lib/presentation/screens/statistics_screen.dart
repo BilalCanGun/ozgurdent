@@ -29,12 +29,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final breakdown = provider.breakdownByProcedure(_ref, _range);
     final cols = Responsive.gridColumns(context).clamp(2, 4);
 
-    return Center(
+    return SafeArea(
+      child: Center(
       child: ConstrainedBox(
         constraints:
             BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
           children: [
             const PageHeader(
               title: 'İstatistik',
@@ -45,13 +46,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             const SizedBox(height: 12),
             _periodNavigator(),
             const SizedBox(height: 20),
-            GridView.count(
-              crossAxisCount: cols,
+            GridView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 1.15,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: cols,
+                mainAxisSpacing: 14,
+                crossAxisSpacing: 14,
+                mainAxisExtent: 150,
+              ),
               children: [
                 StatTile(
                   label: 'Toplam Ciro',
@@ -90,7 +93,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               )
             else ...[
-              _pieCard(stats),
+              _pieCard(stats, breakdown),
               const SizedBox(height: 20),
               _paymentCard(stats),
               const SizedBox(height: 20),
@@ -98,6 +101,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             ],
           ],
         ),
+      ),
       ),
     );
   }
@@ -224,147 +228,179 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     });
   }
 
-  Widget _pieCard(PeriodStats stats) {
-    final total = stats.total <= 0 ? 1 : stats.total;
-    final doctorPct = stats.doctor / total * 100;
-    final clinicPct = stats.clinic / total * 100;
+  // İşlem dilimleri için canlı renk paleti.
+  static const List<Color> _sliceColors = [
+    AppColors.primary,
+    AppColors.accent,
+    AppColors.success,
+    AppColors.warning,
+    AppColors.violet,
+    AppColors.pink,
+    AppColors.teal,
+    AppColors.info,
+    AppColors.danger,
+    AppColors.amber,
+  ];
+
+  Widget _pieCard(
+    PeriodStats stats,
+    Map<String, ({int count, double total, double doctor})> breakdown,
+  ) {
+    // Yaptığın işlemleri, senin kazancına (doctor payı) göre büyükten küçüğe sırala.
+    final entries = breakdown.entries
+        .where((e) => e.value.doctor > 0)
+        .toList()
+      ..sort((a, b) => b.value.doctor.compareTo(a.value.doctor));
+
+    final totalDoctor = entries.fold<double>(0, (s, e) => s + e.value.doctor);
+
+    final sections = <PieChartSectionData>[
+      for (int i = 0; i < entries.length; i++)
+        PieChartSectionData(
+          value: entries[i].value.doctor,
+          color: _sliceColors[i % _sliceColors.length],
+          radius: 32,
+          showTitle: false,
+        ),
+    ];
 
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Gelir Dağılımı',
+            'Kazanç Dağılımı (İşlemlere Göre)',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
               color: AppColors.textPrimary,
             ),
           ),
+          const SizedBox(height: 4),
+          const Text(
+            'Toplam senin kazancın ve yaptığın işlemlerin dağılımı',
+            style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+          ),
           const SizedBox(height: 16),
           SizedBox(
-            height: 200,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      PieChart(
-                        PieChartData(
-                          sectionsSpace: 3,
-                          centerSpaceRadius: 52,
-                          startDegreeOffset: -90,
-                          sections: [
-                            PieChartSectionData(
-                              value: stats.doctor,
-                              color: AppColors.doctorShare,
-                              radius: 30,
-                              showTitle: false,
-                            ),
-                            PieChartSectionData(
-                              value: stats.clinic,
-                              color: AppColors.clinicShare,
-                              radius: 30,
-                              showTitle: false,
-                            ),
-                          ],
+            height: 210,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    PieChart(
+                      PieChartData(
+                        sectionsSpace: 3,
+                        centerSpaceRadius: 62,
+                        startDegreeOffset: -90,
+                        sections: sections.isEmpty
+                            ? [
+                                PieChartSectionData(
+                                  value: 1,
+                                  color: AppColors.border,
+                                  radius: 32,
+                                  showTitle: false,
+                                )
+                              ]
+                            : sections,
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          Fmt.money(stats.doctor),
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
                         ),
-                      ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            Fmt.money(stats.total),
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
+                        const Text(
+                          'Senin Kazancın',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
                           ),
-                          const Text(
-                            'Toplam',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${stats.procedureCount} işlem',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _legend(
-                        AppColors.doctorShare,
-                        'Sana Kalan',
-                        Fmt.money(stats.doctor),
-                        doctorPct,
-                      ),
-                      const SizedBox(height: 16),
-                      _legend(
-                        AppColors.clinicShare,
-                        'Kliniğe Kalan',
-                        Fmt.money(stats.clinic),
-                        clinicPct,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
+          const SizedBox(height: 16),
+          for (int i = 0; i < entries.length; i++)
+            _procedureLegendRow(
+              _sliceColors[i % _sliceColors.length],
+              entries[i].key,
+              entries[i].value.doctor,
+              entries[i].value.count,
+              totalDoctor <= 0 ? 0 : entries[i].value.doctor / totalDoctor * 100,
+            ),
         ],
       ),
     );
   }
 
-  Widget _legend(Color color, String label, String value, double pct) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(3),
-              ),
+  Widget _procedureLegendRow(
+      Color color, String name, double doctor, int count, double pct) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(4),
             ),
-            const SizedBox(width: 8),
-            Text(
-              label,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 13,
+                fontSize: 13.5,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+                color: AppColors.textPrimary,
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: color,
           ),
-        ),
-        Text(
-          '%${pct.toStringAsFixed(1)}',
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
+          Text(
+            '%${pct.toStringAsFixed(0)}',
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(width: 12),
+          Text(
+            Fmt.money(doctor),
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

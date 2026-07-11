@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/teeth.dart';
 import '../../core/theme/app_colors.dart';
+import 'tooth_model.dart';
 
 /// FDI sistemine göre interaktif diş şeması.
 ///
@@ -140,75 +141,78 @@ class _ToothChartState extends State<ToothChart> {
         ),
       );
 
-  /// Bir çene (sağ çeyrek + orta çizgi + sol çeyrek). Genişliğe göre ölçeklenir.
+  /// Bir çene (sağ çeyrek + orta çizgi + sol çeyrek).
+  /// Dişler ekran genişliğine göre mümkün olduğunca büyük çizilir ve tümü sığar.
   Widget _arch(List<String> right, List<String> left) {
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (final t in right) _tooth(t),
-          Container(
-            width: 2,
-            height: 40,
-            margin: const EdgeInsets.symmetric(horizontal: 6),
-            decoration: BoxDecoration(
-              color: AppColors.border,
-              borderRadius: BorderRadius.circular(2),
+    final count = right.length + left.length;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 3.0;
+        const dividerW = 10.0;
+        final toothW =
+            ((constraints.maxWidth - dividerW) / count - gap).clamp(16.0, 66.0);
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (final t in right) _tooth(t, toothW, gap),
+            Container(
+              width: 2,
+              height: toothW * 1.6,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          for (final t in left) _tooth(t),
-        ],
-      ),
+            for (final t in left) _tooth(t, toothW, gap),
+          ],
+        );
+      },
     );
   }
 
-  Widget _tooth(String number) {
+  Widget _tooth(String number, double w, double gap) {
     final selected = widget.selected.contains(number);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3),
-      child: GestureDetector(
-        onTap: () => _toggle(number),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 38,
-          height: 48,
-          decoration: BoxDecoration(
-            color: selected ? AppColors.primary : AppColors.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
-              width: 1.4,
-            ),
-            boxShadow: selected
-                ? const [
-                    BoxShadow(
-                      color: AppColors.shadow,
-                      blurRadius: 10,
-                      offset: Offset(0, 4),
-                    )
-                  ]
-                : null,
+    final fontSize = (w * 0.32).clamp(9.0, 14.0);
+    return GestureDetector(
+      onTap: () => _toggle(number),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: w,
+        margin: EdgeInsets.symmetric(horizontal: gap / 2),
+        padding: EdgeInsets.symmetric(vertical: w * 0.14, horizontal: 2),
+        decoration: BoxDecoration(
+          gradient: selected ? AppColors.primaryGradient : null,
+          color: selected ? null : AppColors.surface,
+          borderRadius: BorderRadius.circular(w * 0.26),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+            width: 1.6,
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.water_drop, // Diş benzeri simge
-                size: 16,
-                color: selected
-                    ? Colors.white
-                    : AppColors.primary.withValues(alpha: 0.55),
+          boxShadow: selected
+              ? const [
+                  BoxShadow(
+                    color: AppColors.shadow,
+                    blurRadius: 12,
+                    offset: Offset(0, 5),
+                  )
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ToothModelIcon(
+                number: number, selected: selected, size: w * 0.82),
+            SizedBox(height: w * 0.08),
+            Text(
+              number,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.textSecondary,
               ),
-              const SizedBox(height: 3),
-              Text(
-                number,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : AppColors.textSecondary,
-                ),
               ),
             ],
           ),

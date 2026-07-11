@@ -7,7 +7,11 @@ class AppTheme {
   AppTheme._();
 
   static ThemeData get light {
-    final base = ThemeData.light(useMaterial3: true);
+    final base = ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      fontFamily: 'Poppins',
+    );
 
     final colorScheme = ColorScheme.fromSeed(
       seedColor: AppColors.primary,
@@ -24,6 +28,10 @@ class AppTheme {
       primaryColor: AppColors.primary,
       splashColor: AppColors.primaryLight.withValues(alpha: 0.12),
       highlightColor: AppColors.primaryLight.withValues(alpha: 0.08),
+
+      // Poppins fontu base ThemeData üzerinden global uygulanır.
+      iconTheme: const IconThemeData(size: 26, color: AppColors.textPrimary),
+      primaryIconTheme: const IconThemeData(size: 26),
 
       textTheme: _textTheme(base.textTheme),
 
@@ -174,6 +182,7 @@ class AppTheme {
   static TextTheme _textTheme(TextTheme base) {
     return base
         .apply(
+          fontFamily: 'Poppins',
           bodyColor: AppColors.textPrimary,
           displayColor: AppColors.textPrimary,
         )

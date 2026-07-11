@@ -25,22 +25,25 @@ class DashboardScreen extends StatelessWidget {
     final upcoming = provider.upcomingAppointments;
     final cols = Responsive.gridColumns(context).clamp(2, 4);
 
-    return Center(
+    return SafeArea(
+      child: Center(
       child: ConstrainedBox(
         constraints:
             BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
           children: [
             _greeting(context, now),
             const SizedBox(height: 20),
-            GridView.count(
-              crossAxisCount: cols,
+            GridView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 1.15,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: cols,
+                mainAxisSpacing: 14,
+                crossAxisSpacing: 14,
+                mainAxisExtent: 150,
+              ),
               children: [
                 StatTile(
                   label: 'Bugünkü Kazancın',
@@ -151,6 +154,7 @@ class DashboardScreen extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -193,13 +197,24 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            child: const Icon(Icons.medical_services,
-                color: Colors.white, size: 30),
+            child: Image.asset(
+              'assets/images/logo.png',
+              height: 44,
+              width: 60,
+              fit: BoxFit.contain,
+            ),
           ),
         ],
       ),

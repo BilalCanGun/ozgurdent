@@ -38,6 +38,10 @@ class Treatment {
 
   final String note;
   final bool isPaid;
+
+  /// İşleme ait fotoğrafların dosya yolları (kronolojik).
+  final List<String> photos;
+
   final DateTime createdAt;
 
   const Treatment({
@@ -56,6 +60,7 @@ class Treatment {
     required this.appointmentDate,
     required this.note,
     required this.isPaid,
+    this.photos = const [],
     required this.createdAt,
   });
 
@@ -73,6 +78,7 @@ class Treatment {
     DateTime? appointmentDate,
     String? note,
     bool? isPaid,
+    List<String>? photos,
   }) {
     return Treatment(
       id: id,
@@ -90,6 +96,7 @@ class Treatment {
       appointmentDate: appointmentDate ?? this.appointmentDate,
       note: note ?? this.note,
       isPaid: isPaid ?? this.isPaid,
+      photos: photos ?? this.photos,
       createdAt: createdAt,
     );
   }
@@ -110,6 +117,7 @@ class Treatment {
         'appointmentDate': appointmentDate.toIso8601String(),
         'note': note,
         'isPaid': isPaid,
+        'photos': photos,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -129,6 +137,8 @@ class Treatment {
         appointmentDate: DateTime.parse(map['appointmentDate'] as String),
         note: map['note'] as String? ?? '',
         isPaid: map['isPaid'] as bool? ?? false,
+        photos: (map['photos'] as List?)?.map((e) => e.toString()).toList() ??
+            const [],
         createdAt: DateTime.parse(map['createdAt'] as String),
       );
 }

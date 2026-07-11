@@ -62,7 +62,8 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(_isEdit ? 'Hastayı Düzenle' : 'Yeni Hasta')),
-      body: Center(
+      body: SafeArea(
+        child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
           child: Form(
@@ -117,6 +118,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

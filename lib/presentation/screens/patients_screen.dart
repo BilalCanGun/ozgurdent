@@ -28,12 +28,9 @@ class _PatientsScreenState extends State<PatientsScreen> {
     final patients = provider.searchPatients(_query);
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addPatient(context),
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('Yeni Hasta'),
-      ),
-      body: Center(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Center(
         child: ConstrainedBox(
           constraints:
               BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
@@ -48,6 +45,15 @@ class _PatientsScreenState extends State<PatientsScreen> {
                     PageHeader(
                       title: 'Hastalar',
                       subtitle: '${provider.patients.length} kayıtlı hasta',
+                      action: FilledButton.icon(
+                        onPressed: () => _addPatient(context),
+                        icon: const Icon(Icons.person_add_alt_1, size: 20),
+                        label: const Text('Yeni'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -77,6 +83,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -85,7 +92,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
     final wide = Responsive.isWide(context);
     if (wide) {
       return GridView.builder(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 100),
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 120),
         gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 420,
           mainAxisSpacing: 12,

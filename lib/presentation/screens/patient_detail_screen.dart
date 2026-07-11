@@ -58,7 +58,8 @@ class PatientDetailScreen extends StatelessWidget {
         icon: const Icon(Icons.add),
         label: const Text('İşlem / Randevu Ekle'),
       ),
-      body: Center(
+      body: SafeArea(
+        child: Center(
         child: ConstrainedBox(
           constraints:
               BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
@@ -114,6 +115,7 @@ class PatientDetailScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
