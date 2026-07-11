@@ -213,9 +213,8 @@ class _ToothChartState extends State<ToothChart> {
                 fontWeight: FontWeight.w700,
                 color: selected ? Colors.white : AppColors.textSecondary,
               ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
