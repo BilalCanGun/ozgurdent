@@ -76,6 +76,9 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^3.0.1
 
+  # Şık ikonlar (diş, hasta, istatistik vb.)
+  font_awesome_flutter: ^10.8.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

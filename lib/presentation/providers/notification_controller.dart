@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../../core/utils/formatters.dart';
@@ -57,6 +59,7 @@ class NotificationController extends ChangeNotifier {
       await NotificationService.cancelAll();
       return;
     }
+    final rnd = Random();
     final items = <({DateTime when, String title, String body})>[];
     final now = DateTime.now();
     for (var i = 0; i < 14; i++) {
@@ -64,20 +67,35 @@ class NotificationController extends ChangeNotifier {
       final appts = provider.appointmentsOn(day);
       if (appts.isEmpty) continue;
       final when = DateTime(day.year, day.month, day.day, _hour, _minute);
+
+      final emoji = _emojis[rnd.nextInt(_emojis.length)];
+      final dayLabel = i == 0 ? 'Bugün' : Fmt.weekday(day);
+      final title = '$emoji  $dayLabel • ${appts.length} randevu';
+
       final lines = <String>[];
       for (final t in appts.take(6)) {
         final name = provider.patientById(t.patientId)?.name ?? 'Hasta';
-        lines.add('${Fmt.time(t.appointmentDate)}  $name — ${t.procedureName}');
+        lines.add('🕐 ${Fmt.time(t.appointmentDate)}  $name — ${t.procedureName}');
       }
-      if (appts.length > 6) lines.add('+${appts.length - 6} randevu daha');
-      items.add((
-        when: when,
-        title: i == 0
-            ? 'Bugün ${appts.length} randevu'
-            : '${appts.length} randevu',
-        body: lines.join('\n'),
-      ));
+      if (appts.length > 6) {
+        lines.add('… +${appts.length - 6} randevu daha');
+      }
+      lines.add('\n${_closings[rnd.nextInt(_closings.length)]}');
+
+      items.add((when: when, title: title, body: lines.join('\n')));
     }
     await NotificationService.scheduleItems(items);
   }
+
+  static const _emojis = [
+    '🦷', '😁', '🪥', '📅', '🗓️', '⏰', '✨', '💙', '👋', '☀️'
+  ];
+
+  static const _closings = [
+    'İyi çalışmalar! ✨',
+    'Harika bir gün olsun 💙',
+    'Hastaların seni bekliyor 🦷',
+    'Bugün de gülümset 😁',
+    'Kolay gelsin! 👏',
+  ];
 }

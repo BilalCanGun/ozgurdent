@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/pickers.dart';
 import '../../core/utils/responsive.dart';
 import '../../data/local/export_service.dart';
 import '../../data/local/import_service.dart';
@@ -186,10 +187,7 @@ class SettingsScreen extends StatelessWidget {
             InkWell(
               borderRadius: BorderRadius.circular(10),
               onTap: () async {
-                final t = await showTimePicker(
-                  context: context,
-                  initialTime: notif.time,
-                );
+                final t = await pickTime(context, notif.time);
                 if (t != null) await notif.setTime(t, provider);
               },
               child: Padding(

@@ -405,51 +405,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _greeting(BuildContext context, DateTime now) {
     return AppCard(
       gradient: AppColors.primaryGradient,
-      padding: const EdgeInsets.all(22),
-      child: Row(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${Fmt.weekday(now)}, ${Fmt.date(now)}',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Merhaba Özgür 👋',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Bugünün özetine göz at.',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
+          // Üst şerit: sol üstte ayarlar, sağ üstte logo.
+          Row(
             children: [
               _settingsButton(context),
-              const SizedBox(height: 10),
+              const Spacer(),
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.12),
@@ -460,12 +429,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 child: Image.asset(
                   'assets/images/logo.png',
-                  height: 36,
-                  width: 52,
+                  height: 32,
+                  width: 46,
                   fit: BoxFit.contain,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '${Fmt.weekday(now)}, ${Fmt.date(now)}',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Merhaba Özgür 👋',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Bugünün özetine göz at.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 14,
+            ),
           ),
         ],
       ),

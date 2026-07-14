@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/procedure_catalog.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/pickers.dart';
 import '../../data/local/photo_storage.dart';
 import '../../data/models/procedure_type.dart';
 import '../../data/models/treatment.dart';
@@ -1245,10 +1246,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_date),
-    );
+    final picked = await pickTime(context, TimeOfDay.fromDateTime(_date));
     if (picked != null) {
       setState(() {
         _date = DateTime(

@@ -31,7 +31,7 @@ Future<void> main() async {
   runApp(OzgurDentApp(clinic: clinic, theme: theme, notif: notif));
 }
 
-class OzgurDentApp extends StatelessWidget {
+class OzgurDentApp extends StatefulWidget {
   final ClinicProvider clinic;
   final ThemeController theme;
   final NotificationController notif;
@@ -44,12 +44,38 @@ class OzgurDentApp extends StatelessWidget {
   });
 
   @override
+  State<OzgurDentApp> createState() => _OzgurDentAppState();
+}
+
+class _OzgurDentAppState extends State<OzgurDentApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Uygulama öne gelince günlük randevu bildirimlerini güncel tut.
+    if (state == AppLifecycleState.resumed && widget.notif.enabled) {
+      widget.notif.reschedule(widget.clinic);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: clinic),
-        ChangeNotifierProvider.value(value: theme),
-        ChangeNotifierProvider.value(value: notif),
+        ChangeNotifierProvider.value(value: widget.clinic),
+        ChangeNotifierProvider.value(value: widget.theme),
+        ChangeNotifierProvider.value(value: widget.notif),
       ],
       child: Consumer<ThemeController>(
         builder: (context, theme, _) {

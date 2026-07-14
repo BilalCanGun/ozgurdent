@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_floating_bottom_bar/flutter_floating_bottom_bar.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -23,9 +24,9 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
   static const _destinations = [
-    _NavItem('Panel', Icons.dashboard_rounded),
-    _NavItem('Hastalar', Icons.people_alt_rounded),
-    _NavItem('İstatistik', Icons.insert_chart_rounded),
+    _NavItem('Panel', FontAwesomeIcons.tooth),
+    _NavItem('Hastalar', FontAwesomeIcons.userGroup),
+    _NavItem('İstatistik', FontAwesomeIcons.chartPie),
   ];
 
   final _screens = const [
@@ -128,12 +129,12 @@ class _HomeShellState extends State<HomeShell> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            FaIcon(
               d.icon,
-              size: 24,
+              size: 20,
               color: active ? Colors.white : AppColors.textSecondary,
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 5),
             Text(
               d.label,
               maxLines: 1,
@@ -168,8 +169,8 @@ class _HomeShellState extends State<HomeShell> {
       destinations: [
         for (final d in _destinations)
           NavigationRailDestination(
-            icon: Icon(d.icon),
-            selectedIcon: Icon(d.icon),
+            icon: FaIcon(d.icon, size: 20),
+            selectedIcon: FaIcon(d.icon, size: 20, color: AppColors.primary),
             label: Text(d.label),
           ),
       ],
