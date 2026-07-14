@@ -16,7 +16,7 @@ import '../widgets/treatment_tile.dart';
 import 'patient_detail_screen.dart';
 import 'patient_form_screen.dart';
 import 'settings_screen.dart';
-import 'weekly_agenda_screen.dart';
+import '../widgets/week_timetable.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -28,6 +28,8 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   late DateTime _focusedMonth;
   late DateTime _selectedDay;
+  late DateTime _weekStart;
+  bool _weekMode = false;
 
   @override
   void initState() {
@@ -35,6 +37,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final now = DateTime.now();
     _focusedMonth = DateTime(now.year, now.month, 1);
     _selectedDay = DateTime(now.year, now.month, now.day);
+    _weekStart = ClinicProvider.weekStart(now);
+  }
+
+  void _setWeekMode(bool week) {
+    setState(() {
+      _weekMode = week;
+      if (week) _weekStart = ClinicProvider.weekStart(_selectedDay);
+    });
   }
 
   @override
@@ -122,80 +132,88 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              AppointmentCalendar(
-                focusedMonth: _focusedMonth,
-                selectedDay: _selectedDay,
-                countsByDay: provider.appointmentCountsByDay(_focusedMonth),
-                onDaySelected: (d) => setState(() => _selectedDay = d),
-                onMonthChanged: (m) => setState(() => _focusedMonth = m),
-                headerAction: IconButton(
-                  tooltip: 'Haftalık ajanda',
-                  icon: const Icon(Icons.calendar_view_week_rounded),
-                  color: AppColors.primary,
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          WeeklyAgendaScreen(initialDate: _selectedDay),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Icon(Icons.event_note, size: 20, color: AppColors.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _selectedDayLabel(),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  if (selectedAppointments.isNotEmpty)
-                    Text(
-                      '${selectedAppointments.length} randevu',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (selectedAppointments.isEmpty)
-                AppCard(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Icon(Icons.event_busy, color: AppColors.textSecondary),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Bu gün için planlanmış randevu yok.',
-                            style: TextStyle(color: AppColors.textSecondary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              if (_weekMode)
+                WeekTimetable(
+                  weekStart: _weekStart,
+                  appointmentsOf: provider.appointmentsOn,
+                  patientNameOf: (id) =>
+                      provider.patientById(id)?.name ?? 'Hasta',
+                  onPrevWeek: () => setState(() => _weekStart =
+                      _weekStart.subtract(const Duration(days: 7))),
+                  onNextWeek: () => setState(() =>
+                      _weekStart = _weekStart.add(const Duration(days: 7))),
+                  onTapAppointment: (t) => _openPatient(context, t.patientId),
+                  headerAction: _modeToggle(),
                 )
-              else
-                ...selectedAppointments.map((t) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: TreatmentTile(
-                        treatment: t,
-                        patientName:
-                            provider.patientById(t.patientId)?.name ?? 'Hasta',
-                        onPaymentTap: () => showPaymentEditor(context, t),
-                        onTap: () => _openPatient(context, t.patientId),
+              else ...[
+                AppointmentCalendar(
+                  focusedMonth: _focusedMonth,
+                  selectedDay: _selectedDay,
+                  countsByDay: provider.appointmentCountsByDay(_focusedMonth),
+                  onDaySelected: (d) => setState(() => _selectedDay = d),
+                  onMonthChanged: (m) => setState(() => _focusedMonth = m),
+                  headerAction: _modeToggle(),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Icon(Icons.event_note, size: 20, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _selectedDayLabel(),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    )),
+                    ),
+                    if (selectedAppointments.isNotEmpty)
+                      Text(
+                        '${selectedAppointments.length} randevu',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (selectedAppointments.isEmpty)
+                  AppCard(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.event_busy,
+                              color: AppColors.textSecondary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Bu gün için planlanmış randevu yok.',
+                              style:
+                                  TextStyle(color: AppColors.textSecondary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ...selectedAppointments.map((t) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: TreatmentTile(
+                          treatment: t,
+                          patientName:
+                              provider.patientById(t.patientId)?.name ??
+                                  'Hasta',
+                          onPaymentTap: () => showPaymentEditor(context, t),
+                          onTap: () => _openPatient(context, t.patientId),
+                        ),
+                      )),
+              ],
             ],
           ),
         ),
@@ -206,6 +224,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedDayLabel() {
     final d = _selectedDay;
     return '${Fmt.relativeDay(d)} • ${Fmt.date(d)}';
+  }
+
+  /// Takvimi aylık ↔ haftalık görünüm arasında değiştiren buton.
+  Widget _modeToggle() {
+    return IconButton(
+      tooltip: _weekMode ? 'Aylık görünüm' : 'Haftalık görünüm',
+      icon: Icon(_weekMode
+          ? Icons.calendar_view_month_rounded
+          : Icons.calendar_view_week_rounded),
+      color: AppColors.primary,
+      onPressed: () => _setWeekMode(!_weekMode),
+    );
   }
 
   // ---------------------------------------------------------------------------

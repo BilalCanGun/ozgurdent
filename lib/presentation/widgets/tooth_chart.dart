@@ -142,31 +142,48 @@ class _ToothChartState extends State<ToothChart> {
       );
 
   /// Bir çene (sağ çeyrek + orta çizgi + sol çeyrek).
-  /// Dişler ekran genişliğine göre mümkün olduğunca büyük çizilir ve tümü sığar.
+  ///
+  /// Dişler rahat dokunulabilir ve büyük çizilir (min 34px). Genişliğe
+  /// sığıyorsa ortalanır; sığmıyorsa yatay kaydırılır (taşma olmaz).
   Widget _arch(List<String> right, List<String> left) {
     final count = right.length + left.length;
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 3.0;
-        const dividerW = 10.0;
-        final toothW =
-            ((constraints.maxWidth - dividerW) / count - gap).clamp(16.0, 66.0);
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            for (final t in right) _tooth(t, toothW, gap),
-            Container(
-              width: 2,
-              height: toothW * 1.6,
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
+        const gap = 4.0;
+        const dividerW = 12.0;
+        final ideal = (constraints.maxWidth - dividerW) / count - gap;
+        final toothW = ideal.clamp(34.0, 60.0).toDouble();
+
+        final children = <Widget>[
+          for (final t in right) _tooth(t, toothW, gap),
+          Container(
+            width: 2,
+            height: toothW * 1.6,
+            margin: const EdgeInsets.symmetric(horizontal: 5),
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius: BorderRadius.circular(2),
             ),
-            for (final t in left) _tooth(t, toothW, gap),
-          ],
+          ),
+          for (final t in left) _tooth(t, toothW, gap),
+        ];
+
+        final totalWidth = count * (toothW + gap) + dividerW + 2;
+        final row = Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: children,
+        );
+
+        // Sığıyorsa ortala; sığmıyorsa yatay kaydırılabilir yap.
+        if (totalWidth <= constraints.maxWidth) {
+          return Center(child: row);
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          physics: const BouncingScrollPhysics(),
+          child: row,
         );
       },
     );
