@@ -27,8 +27,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Widget build(BuildContext context) {
     context.watch<ThemeController>();
     final provider = context.watch<ClinicProvider>();
-    final stats = provider.statsFor(_ref, _range);
-    final breakdown = provider.breakdownByProcedure(_ref, _range);
+    final report = provider.periodReport(_ref, _range);
+    final stats = report.stats;
+    final breakdown = report.breakdown;
     final cols = Responsive.gridColumns(context).clamp(2, 4);
 
     return SafeArea(

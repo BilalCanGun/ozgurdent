@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,8 +7,10 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/responsive.dart';
 import '../../data/local/export_service.dart';
+import '../../data/local/import_service.dart';
 import '../../data/models/procedure_type.dart';
 import '../providers/clinic_provider.dart';
+import '../providers/notification_controller.dart';
 import '../providers/theme_controller.dart';
 import '../widgets/app_card.dart';
 
@@ -18,6 +21,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
     final provider = context.watch<ClinicProvider>();
+    final notif = context.watch<NotificationController>();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Ayarlar')),
@@ -33,9 +37,15 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 10),
               _darkModeCard(theme),
               const SizedBox(height: 24),
+              _sectionLabel('Bildirimler'),
+              const SizedBox(height: 10),
+              _notificationCard(context, notif, provider),
+              const SizedBox(height: 24),
               _sectionLabel('Veri'),
               const SizedBox(height: 10),
               _ExportCard(),
+              const SizedBox(height: 10),
+              _ImportCard(),
               const SizedBox(height: 24),
               Row(
                 children: [
@@ -117,6 +127,100 @@ class SettingsScreen extends StatelessWidget {
             activeColor: AppColors.primary,
             onChanged: (v) => theme.setDark(v),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _notificationCard(
+      BuildContext context, NotificationController notif, ClinicProvider provider) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  notif.enabled
+                      ? Icons.notifications_active
+                      : Icons.notifications_off_outlined,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Günlük randevu bildirimi',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Seçilen saatte o günün randevuları',
+                      style: TextStyle(
+                          fontSize: 12.5, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: notif.enabled,
+                activeColor: AppColors.primary,
+                onChanged: (v) => notif.setEnabled(v, provider),
+              ),
+            ],
+          ),
+          if (notif.enabled) ...[
+            Divider(height: 20, color: AppColors.border),
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () async {
+                final t = await showTimePicker(
+                  context: context,
+                  initialTime: notif.time,
+                );
+                if (t != null) await notif.setTime(t, provider);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.access_time, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Bildirim saati',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      notif.time.format(context),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primary,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: AppColors.textSecondary),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -237,7 +341,7 @@ class _ExportCardState extends State<_ExportCard> {
 
   Future<void> _export() async {
     final provider = context.read<ClinicProvider>();
-    if (provider.treatments.isEmpty) {
+    if (!provider.hasTreatments) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aktarılacak işlem kaydı yok.')),
       );
@@ -315,6 +419,99 @@ class _ExportCardState extends State<_ExportCard> {
   }
 }
 
+/// Excel içe aktarma kartı (dışa aktarma ile aynı formatı okur).
+class _ImportCard extends StatefulWidget {
+  @override
+  State<_ImportCard> createState() => _ImportCardState();
+}
+
+class _ImportCardState extends State<_ImportCard> {
+  bool _busy = false;
+
+  Future<void> _import() async {
+    final provider = context.read<ClinicProvider>();
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+    );
+    final path = picked?.files.single.path;
+    if (path == null) return;
+
+    setState(() => _busy = true);
+    try {
+      final rows = await ImportService.readRows(path);
+      final res = await provider.importRows(rows);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'İçe aktarıldı: ${res.patients} yeni hasta, '
+            '${res.treatments} işlem'
+            '${res.skipped > 0 ? ' • ${res.skipped} satır atlandı' : ''}.',
+          ),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İçe aktarma başarısız: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      onTap: _busy ? null : _import,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: AppColors.info.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.upload_file_outlined, color: AppColors.info),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Excel yükle (.xlsx)',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  'Aynı formatta hasta/işlem kayıtlarını içe aktar',
+                  style:
+                      TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          if (_busy)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.4),
+            )
+          else
+            Icon(Icons.file_upload_outlined, color: AppColors.primary),
+        ],
+      ),
+    );
+  }
+}
+
 /// İşlem ekleme / düzenleme alt sayfası.
 class _ProcedureEditor extends StatefulWidget {
   final ProcedureType? existing;
@@ -360,12 +557,13 @@ class _ProcedureEditorState extends State<_ProcedureEditor> {
   String _trim(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
 
+  void _snack(String msg) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg)));
+
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İşlem adı gerekli.')),
-      );
+      _snack('İşlem adı gerekli.');
       return;
     }
     final pct =
@@ -374,6 +572,19 @@ class _ProcedureEditorState extends State<_ProcedureEditor> {
     final def = double.tryParse(_defaultCtrl.text.replaceAll(',', '.')) ?? 0;
     final requiresLab =
         _model == PricingModel.percentageAfterLab ? true : _requiresLab;
+
+    // Fiyatlandırma doğrulaması: bozuk kural (0 tutar / 0 yüzde) engellenir.
+    if (_model == PricingModel.net) {
+      if (net <= 0) {
+        _snack('Net tutar 0’dan büyük olmalı.');
+        return;
+      }
+    } else {
+      if (pct <= 0 || pct > 1) {
+        _snack('Yüzde 1 ile 100 arasında olmalı.');
+        return;
+      }
+    }
 
     final provider = context.read<ClinicProvider>();
     if (_isEdit) {

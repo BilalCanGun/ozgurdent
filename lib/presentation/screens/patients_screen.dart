@@ -46,7 +46,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                   children: [
                     PageHeader(
                       title: 'Hastalar',
-                      subtitle: '${provider.patients.length} kayıtlı hasta',
+                      subtitle: '${provider.patientCount} kayıtlı hasta',
                       action: FilledButton.icon(
                         onPressed: () => _addPatient(context),
                         icon: const Icon(Icons.person_add_alt_1, size: 20),
@@ -117,7 +117,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
       BuildContext context, ClinicProvider provider, Patient p) {
     final total = provider.patientTotal(p.id);
     final outstanding = provider.patientOutstanding(p.id);
-    final count = provider.treatmentsForPatient(p.id).length;
+    final count = provider.patientTreatmentCount(p.id);
 
     return AppCard(
       onTap: () => Navigator.of(context).push(

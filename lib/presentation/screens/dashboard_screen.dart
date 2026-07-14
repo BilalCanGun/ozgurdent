@@ -16,6 +16,7 @@ import '../widgets/treatment_tile.dart';
 import 'patient_detail_screen.dart';
 import 'patient_form_screen.dart';
 import 'settings_screen.dart';
+import 'weekly_agenda_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -127,6 +128,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 countsByDay: provider.appointmentCountsByDay(_focusedMonth),
                 onDaySelected: (d) => setState(() => _selectedDay = d),
                 onMonthChanged: (m) => setState(() => _focusedMonth = m),
+                headerAction: IconButton(
+                  tooltip: 'Haftalık ajanda',
+                  icon: const Icon(Icons.calendar_view_week_rounded),
+                  color: AppColors.primary,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          WeeklyAgendaScreen(initialDate: _selectedDay),
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
               Row(

@@ -15,6 +15,9 @@ class AppointmentCalendar extends StatelessWidget {
   final ValueChanged<DateTime> onDaySelected;
   final ValueChanged<DateTime> onMonthChanged;
 
+  /// Başlığın sağına eklenecek isteğe bağlı aksiyon (ör. Haftalık butonu).
+  final Widget? headerAction;
+
   const AppointmentCalendar({
     super.key,
     required this.focusedMonth,
@@ -22,6 +25,7 @@ class AppointmentCalendar extends StatelessWidget {
     required this.countsByDay,
     required this.onDaySelected,
     required this.onMonthChanged,
+    this.headerAction,
   });
 
   static const _weekdays = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
@@ -101,6 +105,7 @@ class AppointmentCalendar extends StatelessWidget {
           onPressed: () => onMonthChanged(
               DateTime(focusedMonth.year, focusedMonth.month + 1, 1)),
         ),
+        if (headerAction != null) headerAction!,
       ],
     );
   }

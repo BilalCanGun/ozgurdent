@@ -22,6 +22,8 @@ Future<void> showPaymentEditor(BuildContext context, Treatment treatment) {
 
 enum _CollectMode { pending, partial, full }
 
+enum _PayTab { full, detailed }
+
 class _PaymentEditorSheet extends StatefulWidget {
   final Treatment treatment;
   const _PaymentEditorSheet({required this.treatment});
@@ -31,6 +33,7 @@ class _PaymentEditorSheet extends StatefulWidget {
 }
 
 class _PaymentEditorSheetState extends State<_PaymentEditorSheet> {
+  late _PayTab _tab;
   late _CollectMode _mode;
   late int _installments;
   late bool _doctorPaid;
@@ -44,11 +47,14 @@ class _PaymentEditorSheetState extends State<_PaymentEditorSheet> {
     _installments = t.installmentCount < 1 ? 1 : t.installmentCount;
     _doctorPaid = t.doctorPaid;
     if (t.clinicCollected) {
+      _tab = _PayTab.full;
       _mode = _CollectMode.full;
     } else if (t.partiallyCollected) {
+      _tab = _PayTab.detailed;
       _mode = _CollectMode.partial;
       _amountCtrl.text = _trim(t.collectedAmount);
     } else {
+      _tab = _PayTab.detailed;
       _mode = _CollectMode.pending;
     }
   }
@@ -63,6 +69,7 @@ class _PaymentEditorSheetState extends State<_PaymentEditorSheet> {
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
   double get _collected {
+    if (_tab == _PayTab.full) return t.totalPrice;
     switch (_mode) {
       case _CollectMode.pending:
         return 0;
@@ -76,7 +83,6 @@ class _PaymentEditorSheetState extends State<_PaymentEditorSheet> {
 
   Future<void> _save() async {
     final collected = _collected;
-    // Doktor payı yalnızca klinik tamamını tahsil ettiyse alınmış sayılır.
     final doctorPaid = collected >= t.totalPrice - 0.005 ? _doctorPaid : false;
     await context.read<ClinicProvider>().updatePayment(
           t,
@@ -125,47 +131,18 @@ class _PaymentEditorSheetState extends State<_PaymentEditorSheet> {
                 style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 18),
-              _label('Klinik tahsilatı'),
-              const SizedBox(height: 8),
-              _modeSelector(),
-              if (_mode == _CollectMode.partial) ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _amountCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
-                  ],
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    labelText: 'Tahsil edilen tutar',
-                    helperText: 'Kalan: ${Fmt.money(_remaining())}',
-                    prefixIcon: const Icon(Icons.payments_outlined),
-                    suffixText: '₺',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final f in const [0.25, 0.5, 0.75])
-                      ActionChip(
-                        label: Text('%${(f * 100).toInt()}'),
-                        onPressed: () => setState(() =>
-                            _amountCtrl.text = _trim(t.totalPrice * f)),
-                      ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 18),
-              _label('Taksit sayısı'),
-              const SizedBox(height: 8),
-              _installmentStepper(),
-              const SizedBox(height: 18),
-              _label('Doktor payı'),
-              const SizedBox(height: 8),
-              _doctorPaidTile(clinicCollected),
+              Row(
+                children: [
+                  _tabSeg('Tamamı tahsil edildi', _PayTab.full,
+                      Icons.check_circle),
+                  _tabSeg('Detaylı', _PayTab.detailed, Icons.tune),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (_tab == _PayTab.full)
+                _fullShareChoice()
+              else
+                _detailed(clinicCollected),
               const SizedBox(height: 22),
               SizedBox(
                 width: double.infinity,
@@ -179,6 +156,147 @@ class _PaymentEditorSheetState extends State<_PaymentEditorSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _tabSeg(String label, _PayTab tab, IconData icon) {
+    final active = _tab == tab;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _tab = tab),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            gradient: active ? AppColors.primaryGradient : null,
+            color: active ? null : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  size: 16,
+                  color: active ? Colors.white : AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: active ? Colors.white : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fullShareChoice() {
+    Widget opt(String label, String sub, bool paid, IconData icon, Color c) {
+      final active = _doctorPaid == paid;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => _doctorPaid = paid),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: active ? c.withValues(alpha: 0.14) : AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: active ? c : Colors.transparent,
+                width: 1.3,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 20, color: active ? c : AppColors.textSecondary),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: active ? c : AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  sub,
+                  style:
+                      TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        opt('Payımı aldım', 'Tamamen kapandı', true, Icons.verified,
+            AppColors.success),
+        opt('Kliniğin payında', 'Payım bekliyor', false,
+            Icons.account_balance_wallet_outlined, AppColors.violet),
+      ],
+    );
+  }
+
+  Widget _detailed(bool clinicCollected) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('Klinik tahsilatı'),
+        const SizedBox(height: 8),
+        _modeSelector(),
+        if (_mode == _CollectMode.partial) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: _amountCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+            ],
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Tahsil edilen tutar',
+              helperText: 'Kalan: ${Fmt.money(_remaining())}',
+              prefixIcon: const Icon(Icons.payments_outlined),
+              suffixText: '₺',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final f in const [0.25, 0.5, 0.75])
+                ActionChip(
+                  label: Text('%${(f * 100).toInt()}'),
+                  onPressed: () =>
+                      setState(() => _amountCtrl.text = _trim(t.totalPrice * f)),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 18),
+        _label('Taksit sayısı'),
+        const SizedBox(height: 8),
+        _installmentStepper(),
+        const SizedBox(height: 18),
+        _label('Doktor payı'),
+        const SizedBox(height: 8),
+        _doctorPaidTile(clinicCollected),
+      ],
     );
   }
 

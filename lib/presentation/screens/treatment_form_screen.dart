@@ -19,6 +19,9 @@ import 'photo_viewer_screen.dart';
 
 enum _CollectMode { pending, partial, full }
 
+/// Tahsilat giriş biçimi: hızlı "tamamı tahsil edildi" veya detaylı seçim.
+enum _PayTab { full, detailed }
+
 /// Formdaki tek bir işlem satırının düzenlenebilir durumu.
 class _Entry {
   ProcedureType procedure;
@@ -29,10 +32,19 @@ class _Entry {
   final manualPctCtrl = TextEditingController(text: '30');
   final noteCtrl = TextEditingController();
   final collectedCtrl = TextEditingController();
+  _PayTab payTab = _PayTab.full;
   _CollectMode collectMode = _CollectMode.pending;
   int installments = 1;
   bool doctorPaid = false;
   List<String> photos = [];
+
+  /// Düzenleme açılışında kaydın sahip olduğu fotoğraflar (kaydedince
+  /// çıkarılanları diskten silmek için).
+  List<String> originalPhotos = [];
+
+  /// Bu oturumda çekilen/eklenen fotoğraflar (kaydedilmeden çıkılırsa
+  /// öksüz kalmasınlar diye temizlenir).
+  final Set<String> captured = {};
 
   String? existingId;
   DateTime? createdAt;
@@ -71,8 +83,19 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
 
   DateTime _date = DateTime.now();
   Treatment? _editing;
+  bool _saved = false;
 
   bool get _isEdit => widget.treatmentId != null;
+
+  /// Katalogda olmayan bir işlem için, kaydın snapshot'ından tanım üretir.
+  ProcedureType _procFromTreatment(Treatment t) => ProcedureType(
+        id: t.procedureId,
+        name: t.procedureName,
+        model: t.model,
+        percentage: t.percentage,
+        netAmount: t.netAmount,
+        requiresLabFee: t.labFee > 0,
+      );
 
   List<ProcedureType> get _catalog {
     final list = context.read<ClinicProvider>().procedures;
@@ -90,8 +113,11 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
           .cast<Treatment?>()
           .firstWhere((t) => true, orElse: () => null);
       final t = _editing;
-      final proc = (t != null ? provider.procedureById(t.procedureId) : null) ??
-          ProcedureCatalog.manual;
+      // Katalogda bulunamayan (silinmiş özel) işlemde, kaydın kendi
+      // snapshot'ından işlem tanımı yeniden kurulur (ad/kural korunur).
+      final proc = t == null
+          ? ProcedureCatalog.manual
+          : (provider.procedureById(t.procedureId) ?? _procFromTreatment(t));
       final e = _Entry(proc);
       if (t != null) {
         e.existingId = t.id;
@@ -107,11 +133,17 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         e.installments = t.installmentCount;
         e.doctorPaid = t.doctorPaid;
         e.photos = [...t.photos];
+        e.originalPhotos = [...t.photos];
         if (t.clinicCollected) {
           e.collectMode = _CollectMode.full;
+          e.payTab = _PayTab.full;
         } else if (t.partiallyCollected) {
           e.collectMode = _CollectMode.partial;
           e.collectedCtrl.text = _trimNum(t.collectedAmount);
+          e.payTab = _PayTab.detailed;
+        } else {
+          e.collectMode = _CollectMode.pending;
+          e.payTab = _PayTab.detailed;
         }
         _date = t.appointmentDate;
       }
@@ -123,6 +155,15 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
 
   @override
   void dispose() {
+    // Kaydedilmeden çıkıldıysa, bu oturumda çekilen yeni fotoğraflar
+    // hiçbir kayda bağlı değildir → diskten temizle (öksüz dosya bırakma).
+    if (!_saved) {
+      for (final e in _entries) {
+        for (final path in e.captured) {
+          PhotoStorage.delete(path);
+        }
+      }
+    }
     for (final e in _entries) {
       e.dispose();
     }
@@ -148,6 +189,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
       );
 
   double _collectedOf(_Entry e) {
+    if (e.payTab == _PayTab.full) return _priceOf(e);
     switch (e.collectMode) {
       case _CollectMode.pending:
         return 0;
@@ -316,7 +358,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
             ),
           ],
           const SizedBox(height: 16),
-          _teethRow(e),
+          _teethInline(e),
           const SizedBox(height: 16),
           TextFormField(
             controller: e.priceCtrl,
@@ -372,86 +414,57 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
     );
   }
 
-  Widget _teethRow(_Entry e) {
-    final sorted = e.teeth.toList()..sort();
-    return GestureDetector(
-      onTap: () => _openToothSheet(e),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
+  Widget _teethInline(_Entry e) {
+    final count = e.teeth.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
             Icon(Icons.medical_information_outlined,
-                color: AppColors.primary, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                sorted.isEmpty ? 'Diş seç (opsiyonel)' : 'Dişler: ${sorted.join(', ')}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: sorted.isEmpty
-                      ? AppColors.textSecondary
-                      : AppColors.textPrimary,
-                ),
+                color: AppColors.primary, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'Diş Seçimi',
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
               ),
             ),
-            Icon(Icons.edit_outlined,
-                size: 18, color: AppColors.textSecondary),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openToothSheet(_Entry e) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.85,
-          maxChildSize: 0.95,
-          builder: (_, controller) => StatefulBuilder(
-            builder: (_, setSheet) => ListView(
-              controller: controller,
-              padding: const EdgeInsets.all(18),
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+            const SizedBox(width: 6),
+            if (count > 0)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$count diş',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
                   ),
                 ),
-                const SizedBox(height: 16),
-                ToothChart(
-                  selected: e.teeth,
-                  onChanged: (s) {
-                    setSheet(() => e.teeth = s);
-                    setState(() {});
-                  },
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Tamam'),
-                ),
-              ],
-            ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(14),
           ),
-        );
-      },
+          child: ToothChart(
+            selected: e.teeth,
+            onChanged: (s) => setState(() => e.teeth = s),
+          ),
+        ),
+      ],
     );
   }
 
@@ -706,6 +719,83 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
           ),
         ),
         const SizedBox(height: 8),
+        // Üst seçim: hızlı "Tamamı tahsil edildi" veya "Detaylı".
+        Row(
+          children: [
+            _payTabSeg(e, 'Tamamı tahsil edildi', _PayTab.full,
+                Icons.check_circle),
+            _payTabSeg(e, 'Detaylı', _PayTab.detailed, Icons.tune),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (e.payTab == _PayTab.full)
+          _fullShareChoice(e)
+        else
+          _detailedCollect(e, clinicCollected),
+      ],
+    );
+  }
+
+  /// "Tamamı tahsil edildi" seçildiğinde payın kimde olduğunu seçtirir.
+  Widget _fullShareChoice(_Entry e) {
+    Widget opt(String label, String sub, bool paid, IconData icon, Color c) {
+      final active = e.doctorPaid == paid;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => e.doctorPaid = paid),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: active ? c.withValues(alpha: 0.14) : AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: active ? c : Colors.transparent,
+                width: 1.3,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon,
+                    size: 18, color: active ? c : AppColors.textSecondary),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: active ? c : AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  sub,
+                  style:
+                      TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        opt('Payımı aldım', 'Tamamen kapandı', true, Icons.verified,
+            AppColors.success),
+        opt('Kliniğin payında', 'Payım bekliyor', false,
+            Icons.account_balance_wallet_outlined, AppColors.violet),
+      ],
+    );
+  }
+
+  /// Detaylı tahsilat: bekliyor / kısmi / tamamı + taksit + doktor payı.
+  Widget _detailedCollect(_Entry e, bool clinicCollected) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Row(
           children: [
             _collectSeg(e, 'Bekliyor', _CollectMode.pending,
@@ -735,16 +825,52 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(
-              child: _installmentStepper(e),
-            ),
+            Expanded(child: _installmentStepper(e)),
             const SizedBox(width: 10),
-            Expanded(
-              child: _doctorPaidChip(e, clinicCollected),
-            ),
+            Expanded(child: _doctorPaidChip(e, clinicCollected)),
           ],
         ),
       ],
+    );
+  }
+
+  Widget _payTabSeg(_Entry e, String label, _PayTab tab, IconData icon) {
+    final active = e.payTab == tab;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => e.payTab = tab),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
+          decoration: BoxDecoration(
+            gradient: active ? AppColors.primaryGradient : null,
+            color: active ? null : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  size: 16,
+                  color: active ? Colors.white : AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: active ? Colors.white : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -967,7 +1093,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         builder: (_) => PhotoViewerScreen(
           photos: e.photos,
           initialIndex: index,
-          onDelete: (i) => _removePhoto(e, i, deleteFile: true),
+          onDelete: (i) => _removePhoto(e, i),
         ),
       ),
     );
@@ -1014,7 +1140,12 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
     if (source == null) return;
     try {
       final path = await PhotoStorage.capture(source);
-      if (path != null) setState(() => e.photos.add(path));
+      if (path != null) {
+        setState(() {
+          e.photos.add(path);
+          e.captured.add(path);
+        });
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1024,11 +1155,11 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
     }
   }
 
-  void _removePhoto(_Entry e, int i, {bool deleteFile = false}) {
+  /// Listeden çıkarır; disk dosyası ancak kaydetme anında silinir
+  /// (kaydetmeden çıkılırsa kırık referans / veri kaybı olmaz).
+  void _removePhoto(_Entry e, int i) {
     if (i < 0 || i >= e.photos.length) return;
-    final path = e.photos[i];
     setState(() => e.photos.removeAt(i));
-    if (deleteFile) PhotoStorage.delete(path);
   }
 
   // ---------------------------------------------------------------------------
@@ -1209,8 +1340,17 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         createdAt: e.createdAt ?? DateTime.now(),
       );
       await provider.saveTreatment(treatment);
+
+      // Kaydetme anında: çıkarılan (artık kayıtta olmayan) hem eski hem de
+      // bu oturumda çekilen fotoğraf dosyalarını sil — öksüz dosya bırakma.
+      final orphans = {...e.originalPhotos, ...e.captured}
+          .where((p) => !e.photos.contains(p));
+      for (final path in orphans) {
+        await PhotoStorage.delete(path);
+      }
     }
 
+    _saved = true;
     if (mounted) Navigator.of(context).pop();
   }
 
