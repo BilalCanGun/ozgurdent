@@ -1,5 +1,6 @@
 import '../local/hive_boxes.dart';
 import '../models/patient.dart';
+import '../models/procedure_type.dart';
 import '../models/treatment.dart';
 
 /// Hasta ve işlem verilerinin yerel veritabanı (Hive) üzerinden yönetimi.
@@ -42,5 +43,27 @@ class ClinicRepository {
 
   Future<void> deleteTreatment(String treatmentId) async {
     await HiveBoxes.treatmentsBox.delete(treatmentId);
+  }
+
+  // --- İşlem tanımları (katalog) ---
+  List<ProcedureType> getProcedures() {
+    return HiveBoxes.proceduresBox.values
+        .map((e) => ProcedureType.fromMap(Map<dynamic, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<void> saveProcedure(ProcedureType procedure) async {
+    await HiveBoxes.proceduresBox.put(procedure.id, procedure.toMap());
+  }
+
+  Future<void> deleteProcedure(String procedureId) async {
+    await HiveBoxes.proceduresBox.delete(procedureId);
+  }
+
+  // --- Ayarlar (meta_box) ---
+  T? getSetting<T>(String key) => HiveBoxes.metaBox.get(key) as T?;
+
+  Future<void> setSetting(String key, dynamic value) async {
+    await HiveBoxes.metaBox.put(key, value);
   }
 }

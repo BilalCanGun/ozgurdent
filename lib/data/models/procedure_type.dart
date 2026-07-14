@@ -42,6 +42,10 @@ class ProcedureType {
   /// [PricingModel.net] için hekime kalan sabit tutar.
   final double netAmount;
 
+  /// İşlem formunda ücret alanına ön-doldurulacak varsayılan/sabit ücret
+  /// (0 = varsayılan yok).
+  final double defaultPrice;
+
   /// Bu işlemde teknisyen bedeli girilmesi gerekiyor mu (kaplama vb.).
   final bool requiresLabFee;
 
@@ -54,9 +58,51 @@ class ProcedureType {
     required this.model,
     this.percentage = 0.30,
     this.netAmount = 0,
+    this.defaultPrice = 0,
     this.requiresLabFee = false,
     this.isCustom = false,
   });
+
+  ProcedureType copyWith({
+    String? name,
+    PricingModel? model,
+    double? percentage,
+    double? netAmount,
+    double? defaultPrice,
+    bool? requiresLabFee,
+  }) =>
+      ProcedureType(
+        id: id,
+        name: name ?? this.name,
+        model: model ?? this.model,
+        percentage: percentage ?? this.percentage,
+        netAmount: netAmount ?? this.netAmount,
+        defaultPrice: defaultPrice ?? this.defaultPrice,
+        requiresLabFee: requiresLabFee ?? this.requiresLabFee,
+        isCustom: isCustom,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'name': name,
+        'model': model.name,
+        'percentage': percentage,
+        'netAmount': netAmount,
+        'defaultPrice': defaultPrice,
+        'requiresLabFee': requiresLabFee,
+        'isCustom': isCustom,
+      };
+
+  factory ProcedureType.fromMap(Map<dynamic, dynamic> map) => ProcedureType(
+        id: map['id'] as String,
+        name: map['name'] as String,
+        model: PricingModelX.fromKey(map['model'] as String),
+        percentage: (map['percentage'] as num?)?.toDouble() ?? 0.30,
+        netAmount: (map['netAmount'] as num?)?.toDouble() ?? 0,
+        defaultPrice: (map['defaultPrice'] as num?)?.toDouble() ?? 0,
+        requiresLabFee: map['requiresLabFee'] as bool? ?? false,
+        isCustom: map['isCustom'] as bool? ?? false,
+      );
 
   /// Verilen toplam ücret üzerinden hekim ve klinik paylarını hesaplar.
   PaymentShares computeShares({

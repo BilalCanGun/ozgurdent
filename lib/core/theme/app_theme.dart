@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
 /// Uygulama genelindeki ThemeData yapılandırması.
-/// Renkler [AppColors] üzerinden gelir.
+/// Renkler [AppColors] üzerinden gelir; açık/koyu tema desteklenir.
 class AppTheme {
   AppTheme._();
 
-  static ThemeData get light {
+  /// O an [AppColors] üzerinde ayarlı olan parlaklığa göre tema üretir.
+  static ThemeData build() {
+    final dark = AppColors.isDark;
+    final brightness = dark ? Brightness.dark : Brightness.light;
+
     final base = ThemeData(
       useMaterial3: true,
-      brightness: Brightness.light,
+      brightness: brightness,
       fontFamily: 'Poppins',
     );
 
@@ -19,7 +23,7 @@ class AppTheme {
       secondary: AppColors.accent,
       surface: AppColors.surface,
       error: AppColors.danger,
-      brightness: Brightness.light,
+      brightness: brightness,
     );
 
     return base.copyWith(
@@ -29,19 +33,19 @@ class AppTheme {
       splashColor: AppColors.primaryLight.withValues(alpha: 0.12),
       highlightColor: AppColors.primaryLight.withValues(alpha: 0.08),
 
-      // Poppins fontu base ThemeData üzerinden global uygulanır.
-      iconTheme: const IconThemeData(size: 26, color: AppColors.textPrimary),
+      iconTheme: IconThemeData(size: 26, color: AppColors.textPrimary),
       primaryIconTheme: const IconThemeData(size: 26),
 
       textTheme: _textTheme(base.textTheme),
 
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
+          fontFamily: 'Poppins',
           color: AppColors.textPrimary,
           fontSize: 22,
           fontWeight: FontWeight.w700,
@@ -54,7 +58,7 @@ class AppTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: AppColors.border),
+          side: BorderSide(color: AppColors.border),
         ),
       ),
 
@@ -74,7 +78,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.primary, width: 1.4),
+          side: BorderSide(color: AppColors.primary, width: 1.4),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -94,7 +98,11 @@ class AppTheme {
         ),
       ),
 
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+      ),
+
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.textOnPrimary,
         elevation: 2,
@@ -107,37 +115,47 @@ class AppTheme {
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.6),
+          borderSide: BorderSide(color: AppColors.primary, width: 1.6),
         ),
-        labelStyle: const TextStyle(color: AppColors.textSecondary),
-        hintStyle: const TextStyle(color: AppColors.textSecondary),
+        labelStyle: TextStyle(color: AppColors.textSecondary),
+        hintStyle: TextStyle(color: AppColors.textSecondary),
       ),
 
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: AppColors.surfaceAlt,
         side: BorderSide.none,
-        labelStyle: const TextStyle(
+        labelStyle: TextStyle(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w600,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
 
-      dividerTheme: const DividerThemeData(
+      dividerTheme: DividerThemeData(
         color: AppColors.border,
         thickness: 1,
         space: 1,
       ),
 
-      navigationRailTheme: const NavigationRailThemeData(
+      dialogTheme: DialogTheme(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+      ),
+
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+      ),
+
+      navigationRailTheme: NavigationRailThemeData(
         backgroundColor: AppColors.surface,
         indicatorColor: AppColors.surfaceAlt,
         selectedIconTheme: IconThemeData(color: AppColors.primary),
@@ -171,8 +189,10 @@ class AppTheme {
 
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.textPrimary,
-        contentTextStyle: const TextStyle(color: Colors.white),
+        backgroundColor: dark ? AppColors.surfaceAlt : AppColors.textPrimary,
+        contentTextStyle: TextStyle(
+          color: dark ? AppColors.textPrimary : Colors.white,
+        ),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -187,19 +207,19 @@ class AppTheme {
           displayColor: AppColors.textPrimary,
         )
         .copyWith(
-          headlineSmall: const TextStyle(
+          headlineSmall: TextStyle(
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
           ),
-          titleLarge: const TextStyle(
+          titleLarge: TextStyle(
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
           ),
-          titleMedium: const TextStyle(
+          titleMedium: TextStyle(
             fontWeight: FontWeight.w600,
             color: AppColors.textPrimary,
           ),
-          bodyMedium: const TextStyle(color: AppColors.textSecondary),
+          bodyMedium: TextStyle(color: AppColors.textSecondary),
         );
   }
 }

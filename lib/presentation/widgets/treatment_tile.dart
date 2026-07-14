@@ -15,7 +15,7 @@ class TreatmentTile extends StatelessWidget {
   final String? patientName;
   final bool showDate;
   final VoidCallback? onTap;
-  final VoidCallback? onTogglePaid;
+  final VoidCallback? onPaymentTap;
 
   const TreatmentTile({
     super.key,
@@ -23,11 +23,13 @@ class TreatmentTile extends StatelessWidget {
     this.patientName,
     this.showDate = true,
     this.onTap,
-    this.onTogglePaid,
+    this.onPaymentTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final showProgress =
+        treatment.partiallyCollected || treatment.installmentCount > 1;
     return AppCard(
       onTap: onTap,
       padding: const EdgeInsets.all(16),
@@ -44,7 +46,7 @@ class TreatmentTile extends StatelessWidget {
                     if (patientName != null)
                       Text(
                         patientName!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
                           color: AppColors.textPrimary,
@@ -63,7 +65,7 @@ class TreatmentTile extends StatelessWidget {
                   ],
                 ),
               ),
-              PaidBadge(paid: treatment.isPaid, onTap: onTogglePaid),
+              PaymentBadge(treatment: treatment, onTap: onPaymentTap),
             ],
           ),
           if (treatment.teeth.isNotEmpty) ...[
@@ -74,18 +76,21 @@ class TreatmentTile extends StatelessWidget {
             const SizedBox(height: 10),
             _photoStrip(context),
           ],
+          if (showProgress) ...[
+            const SizedBox(height: 12),
+            CollectionProgress(treatment: treatment),
+          ],
           const SizedBox(height: 12),
           const Divider(height: 1),
           const SizedBox(height: 12),
           Row(
             children: [
               if (showDate) ...[
-                const Icon(Icons.event,
-                    size: 15, color: AppColors.textSecondary),
+                Icon(Icons.event, size: 15, color: AppColors.textSecondary),
                 const SizedBox(width: 5),
                 Text(
                   '${Fmt.relativeDay(treatment.appointmentDate)} • ${Fmt.time(treatment.appointmentDate)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.5,
                     color: AppColors.textSecondary,
                     fontWeight: FontWeight.w600,
@@ -98,17 +103,21 @@ class TreatmentTile extends StatelessWidget {
                 children: [
                   Text(
                     Fmt.money(treatment.totalPrice),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
                     ),
                   ),
                   Text(
-                    'Sana: ${Fmt.money(treatment.doctorShare)}',
-                    style: const TextStyle(
+                    treatment.awaitingDoctorPayout
+                        ? 'Payın bekliyor: ${Fmt.money(treatment.doctorShare)}'
+                        : 'Sana: ${Fmt.money(treatment.doctorShare)}',
+                    style: TextStyle(
                       fontSize: 11.5,
-                      color: AppColors.primary,
+                      color: treatment.awaitingDoctorPayout
+                          ? AppColors.violet
+                          : AppColors.primary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

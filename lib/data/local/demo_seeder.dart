@@ -49,11 +49,18 @@ class DemoSeeder {
       required DateTime date,
       double labFee = 0,
       bool paid = true,
+      double? collected,
+      bool doctorPaid = true,
+      int installments = 1,
       String note = '',
       List<String> photos = const [],
     }) async {
       final proc = ProcedureCatalog.byId(procedureId)!;
       final shares = proc.computeShares(totalPrice: price, labFee: labFee);
+      // 'paid' geriye dönük kolaylık: true → tamamı tahsil + doktor aldı,
+      // false → hiç tahsil edilmedi. 'collected' verilirse o öncelikli.
+      final collectedAmount = collected ?? (paid ? price : 0);
+      final gotDoctorPaid = collected != null ? doctorPaid : (paid && doctorPaid);
       final t = Treatment(
         id: _uuid.v4(),
         patientId: patient.id,
@@ -69,7 +76,9 @@ class DemoSeeder {
         clinicShare: shares.clinic,
         appointmentDate: date,
         note: note,
-        isPaid: paid,
+        installmentCount: installments,
+        collectedAmount: collectedAmount,
+        doctorPaid: gotDoctorPaid,
         photos: photos,
         createdAt: date,
       );
@@ -85,7 +94,9 @@ class DemoSeeder {
         teeth: ['26'], price: 4000, date: at(-12, 14),
         note: '3 kanallı, retreatment ihtimali konuşuldu.');
     await addTreatment(ayse, 'dis_tasi',
-        teeth: ['11', '21'], price: 1500, date: at(-4, 9, 15));
+        teeth: ['11', '21'], price: 1500, date: at(-4, 9, 15),
+        // Klinik tahsil etti ama doktor payını henüz almadı.
+        collected: 1500, doctorPaid: false);
     await addTreatment(ayse, 'beyazlatma',
         teeth: ['13', '12', '11', '21', '22', '23'],
         price: 5000,
@@ -103,9 +114,13 @@ class DemoSeeder {
         photos: [rontgen, oncesi, sonrasi]);
     await addTreatment(mehmet, 'kaplama_zirkon',
         teeth: ['36'], price: 8000, labFee: 2200, date: at(-6, 13, 30),
+        // Klinik tahsil etti, doktor payını bekliyor.
+        collected: 8000, doctorPaid: false,
         photos: [oncesi, sonrasi]);
     await addTreatment(mehmet, 'cekim',
-        teeth: ['48'], price: 2000, date: at(0, 15));
+        teeth: ['48'], price: 2000, date: at(0, 15),
+        // Taksitli: 3 taksitin biri tahsil edildi.
+        collected: 800, installments: 3, doctorPaid: false);
     await addTreatment(mehmet, 'implant_ustu',
         teeth: ['46'], price: 5000, date: at(7, 10), paid: false,
         note: 'İmplant üstü kron randevusu.');

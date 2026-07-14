@@ -6,6 +6,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/responsive.dart';
 import '../providers/clinic_provider.dart';
+import '../providers/theme_controller.dart';
 import '../widgets/app_card.dart';
 import '../widgets/common_bits.dart';
 import '../widgets/empty_state.dart';
@@ -24,6 +25,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<ThemeController>();
     final provider = context.watch<ClinicProvider>();
     final stats = provider.statsFor(_ref, _range);
     final breakdown = provider.breakdownByProcedure(_ref, _range);
@@ -31,77 +33,78 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
     return SafeArea(
       child: Center(
-      child: ConstrainedBox(
-        constraints:
-            BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
-          children: [
-            const PageHeader(
-              title: 'İstatistik',
-              subtitle: 'Kazanç ve işlem özeti',
-            ),
-            const SizedBox(height: 16),
-            _rangeSelector(),
-            const SizedBox(height: 12),
-            _periodNavigator(),
-            const SizedBox(height: 20),
-            GridView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: cols,
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 14,
-                mainAxisExtent: 150,
+        child: ConstrainedBox(
+          constraints:
+              BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
+            children: [
+              const PageHeader(
+                title: 'İstatistik',
+                subtitle: 'Kazanç ve işlem özeti',
               ),
-              children: [
-                StatTile(
-                  label: 'Toplam Ciro',
-                  value: Fmt.money(stats.total),
-                  icon: Icons.summarize_outlined,
-                  color: AppColors.textPrimary,
+              const SizedBox(height: 16),
+              _rangeSelector(),
+              const SizedBox(height: 12),
+              _periodNavigator(),
+              const SizedBox(height: 20),
+              GridView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: cols,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 14,
+                  mainAxisExtent: 150,
                 ),
-                StatTile(
-                  label: 'Sana Kalan',
-                  value: Fmt.money(stats.doctor),
-                  icon: Icons.account_balance_wallet_outlined,
-                  color: AppColors.doctorShare,
-                ),
-                StatTile(
-                  label: 'Kliniğe Kalan',
-                  value: Fmt.money(stats.clinic),
-                  icon: Icons.business_outlined,
-                  color: AppColors.clinicShare,
-                ),
-                StatTile(
-                  label: 'İşlem Sayısı',
-                  value: '${stats.procedureCount}',
-                  icon: Icons.medical_services_outlined,
-                  color: AppColors.accent,
-                  subtitle: '${stats.patientCount} hasta',
-                ),
+                children: [
+                  StatTile(
+                    label: 'Toplam Ciro',
+                    value: Fmt.money(stats.total),
+                    icon: Icons.summarize_outlined,
+                    color: AppColors.textPrimary,
+                  ),
+                  StatTile(
+                    label: 'Sana Kalan',
+                    value: Fmt.money(stats.doctor),
+                    icon: Icons.account_balance_wallet_outlined,
+                    color: AppColors.doctorShare,
+                  ),
+                  StatTile(
+                    label: 'Kliniğe Kalan',
+                    value: Fmt.money(stats.clinic),
+                    icon: Icons.business_outlined,
+                    color: AppColors.clinicShare,
+                  ),
+                  StatTile(
+                    label: 'İşlem Sayısı',
+                    value: '${stats.procedureCount}',
+                    icon: Icons.medical_services_outlined,
+                    color: AppColors.accent,
+                    subtitle: '${stats.patientCount} hasta',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (stats.total <= 0)
+                const AppCard(
+                  child: EmptyState(
+                    icon: Icons.pie_chart_outline,
+                    title: 'Bu dönemde veri yok',
+                    message:
+                        'Seçilen tarih aralığında kayıtlı işlem bulunmuyor.',
+                  ),
+                )
+              else ...[
+                _pieCard(stats, breakdown),
+                const SizedBox(height: 20),
+                _paymentCard(stats),
+                const SizedBox(height: 20),
+                _breakdownCard(breakdown),
               ],
-            ),
-            const SizedBox(height: 20),
-            if (stats.total <= 0)
-              const AppCard(
-                child: EmptyState(
-                  icon: Icons.pie_chart_outline,
-                  title: 'Bu dönemde veri yok',
-                  message: 'Seçilen tarih aralığında kayıtlı işlem bulunmuyor.',
-                ),
-              )
-            else ...[
-              _pieCard(stats, breakdown),
-              const SizedBox(height: 20),
-              _paymentCard(stats),
-              const SizedBox(height: 20),
-              _breakdownCard(breakdown),
             ],
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -116,6 +119,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       child: Row(
         children: [
           _rangeTab('Günlük', StatsRange.day),
+          _rangeTab('Haftalık', StatsRange.week),
           _rangeTab('Aylık', StatsRange.month),
           _rangeTab('Yıllık', StatsRange.year),
         ],
@@ -136,11 +140,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             color: active ? AppColors.surface : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
             boxShadow: active
-                ? const [
+                ? [
                     BoxShadow(
                       color: AppColors.shadow,
                       blurRadius: 8,
-                      offset: Offset(0, 2),
+                      offset: const Offset(0, 2),
                     )
                   ]
                 : null,
@@ -148,6 +152,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           child: Text(
             label,
             style: TextStyle(
+              fontSize: 13,
               fontWeight: FontWeight.w700,
               color: active ? AppColors.primary : AppColors.textSecondary,
             ),
@@ -170,7 +175,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             child: Center(
               child: Text(
                 _periodLabel(),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
@@ -191,6 +196,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     switch (_range) {
       case StatsRange.day:
         return '${Fmt.weekday(_ref)}, ${Fmt.date(_ref)}';
+      case StatsRange.week:
+        final start = ClinicProvider.weekStart(_ref);
+        final end = start.add(const Duration(days: 6));
+        return '${Fmt.dateShort(start)} – ${Fmt.dateShort(end)}';
       case StatsRange.month:
         return Fmt.monthYear(_ref);
       case StatsRange.year:
@@ -204,6 +213,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       case StatsRange.day:
         return DateTime(_ref.year, _ref.month, _ref.day)
             .isBefore(DateTime(now.year, now.month, now.day));
+      case StatsRange.week:
+        return ClinicProvider.weekStart(_ref)
+            .isBefore(ClinicProvider.weekStart(now));
       case StatsRange.month:
         return DateTime(_ref.year, _ref.month)
             .isBefore(DateTime(now.year, now.month));
@@ -218,6 +230,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         case StatsRange.day:
           _ref = _ref.add(Duration(days: dir));
           break;
+        case StatsRange.week:
+          _ref = _ref.add(Duration(days: 7 * dir));
+          break;
         case StatsRange.month:
           _ref = DateTime(_ref.year, _ref.month + dir, 1);
           break;
@@ -229,36 +244,36 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   // İşlem dilimleri için canlı renk paleti.
-  static const List<Color> _sliceColors = [
-    AppColors.primary,
-    AppColors.accent,
-    AppColors.success,
-    AppColors.warning,
-    AppColors.violet,
-    AppColors.pink,
-    AppColors.teal,
-    AppColors.info,
-    AppColors.danger,
-    AppColors.amber,
-  ];
+  List<Color> get _sliceColors => [
+        AppColors.primary,
+        AppColors.accent,
+        AppColors.success,
+        AppColors.warning,
+        AppColors.violet,
+        AppColors.pink,
+        AppColors.teal,
+        AppColors.info,
+        AppColors.danger,
+        AppColors.amber,
+      ];
 
   Widget _pieCard(
     PeriodStats stats,
     Map<String, ({int count, double total, double doctor})> breakdown,
   ) {
-    // Yaptığın işlemleri, senin kazancına (doctor payı) göre büyükten küçüğe sırala.
     final entries = breakdown.entries
         .where((e) => e.value.doctor > 0)
         .toList()
       ..sort((a, b) => b.value.doctor.compareTo(a.value.doctor));
 
     final totalDoctor = entries.fold<double>(0, (s, e) => s + e.value.doctor);
+    final colors = _sliceColors;
 
     final sections = <PieChartSectionData>[
       for (int i = 0; i < entries.length; i++)
         PieChartSectionData(
           value: entries[i].value.doctor,
-          color: _sliceColors[i % _sliceColors.length],
+          color: colors[i % colors.length],
           radius: 32,
           showTitle: false,
         ),
@@ -268,7 +283,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Kazanç Dağılımı (İşlemlere Göre)',
             style: TextStyle(
               fontSize: 16,
@@ -277,7 +292,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Toplam senin kazancın ve yaptığın işlemlerin dağılımı',
             style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
           ),
@@ -312,13 +327,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       children: [
                         Text(
                           Fmt.money(stats.doctor),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
                             color: AppColors.primary,
                           ),
                         ),
-                        const Text(
+                        Text(
                           'Senin Kazancın',
                           style: TextStyle(
                             fontSize: 12,
@@ -328,7 +343,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                         const SizedBox(height: 2),
                         Text(
                           '${stats.procedureCount} işlem',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,
                             color: AppColors.textSecondary,
@@ -344,7 +359,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           const SizedBox(height: 16),
           for (int i = 0; i < entries.length; i++)
             _procedureLegendRow(
-              _sliceColors[i % _sliceColors.length],
+              colors[i % colors.length],
               entries[i].key,
               entries[i].value.doctor,
               entries[i].value.count,
@@ -375,7 +390,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
@@ -384,7 +399,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           ),
           Text(
             '%${pct.toStringAsFixed(0)}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
               color: AppColors.textSecondary,
@@ -406,24 +421,60 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   Widget _paymentCard(PeriodStats stats) {
     return AppCard(
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: _paymentBox(
-              'Tahsil Edilen',
-              Fmt.money(stats.paid),
-              AppColors.success,
-              Icons.check_circle_outline,
+          Text(
+            'Tahsilat & Pay Durumu',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _paymentBox(
-              'Bekleyen',
-              Fmt.money(stats.unpaid),
-              AppColors.warning,
-              Icons.schedule,
-            ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _paymentBox(
+                  'Tahsil Edilen',
+                  Fmt.money(stats.collected),
+                  AppColors.success,
+                  Icons.check_circle_outline,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _paymentBox(
+                  'Bekleyen Tahsilat',
+                  Fmt.money(stats.outstanding),
+                  AppColors.warning,
+                  Icons.schedule,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _paymentBox(
+                  'Aldığın Pay',
+                  Fmt.money(stats.doctorPaid),
+                  AppColors.doctorShare,
+                  Icons.verified_outlined,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _paymentBox(
+                  'Bekleyen Payın',
+                  Fmt.money(stats.doctorPending),
+                  AppColors.violet,
+                  Icons.account_balance_wallet_outlined,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -457,7 +508,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),
@@ -478,7 +529,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'İşlem Kırılımı',
             style: TextStyle(
               fontSize: 16,
@@ -500,7 +551,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   ),
                   child: Text(
                     '${e.value.count}x',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: AppColors.primary,
                       fontSize: 12.5,
@@ -511,7 +562,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 Expanded(
                   child: Text(
                     e.key,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
                     ),
@@ -522,14 +573,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   children: [
                     Text(
                       Fmt.money(e.value.total),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
                       ),
                     ),
                     Text(
                       'Sana ${Fmt.money(e.value.doctor)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         color: AppColors.primary,
                         fontWeight: FontWeight.w600,

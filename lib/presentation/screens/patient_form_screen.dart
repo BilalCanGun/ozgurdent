@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../data/models/patient.dart';
 import '../providers/clinic_provider.dart';
+import '../providers/theme_controller.dart';
 
 /// Yeni hasta ekleme veya mevcut hastayı düzenleme formu.
 class PatientFormScreen extends StatefulWidget {
@@ -60,6 +61,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<ThemeController>();
     return Scaffold(
       appBar: AppBar(title: Text(_isEdit ? 'Hastayı Düzenle' : 'Yeni Hasta')),
       body: SafeArea(

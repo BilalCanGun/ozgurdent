@@ -6,8 +6,10 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/responsive.dart';
 import '../../data/models/patient.dart';
 import '../providers/clinic_provider.dart';
+import '../providers/theme_controller.dart';
 import '../widgets/app_card.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/payment_editor.dart';
 import '../widgets/treatment_tile.dart';
 import 'patient_form_screen.dart';
 import 'treatment_form_screen.dart';
@@ -18,6 +20,7 @@ class PatientDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<ThemeController>();
     final provider = context.watch<ClinicProvider>();
     final patient = provider.patientById(patientId);
 
@@ -29,7 +32,7 @@ class PatientDetailScreen extends StatelessWidget {
 
     final treatments = provider.treatmentsForPatient(patientId);
     final total = provider.patientTotal(patientId);
-    final unpaid = provider.patientUnpaid(patientId);
+    final outstanding = provider.patientOutstanding(patientId);
     final doctorTotal =
         treatments.fold<double>(0, (s, t) => s + t.doctorShare);
 
@@ -66,20 +69,20 @@ class PatientDetailScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 100),
             children: [
-              _summaryCard(patient, total, doctorTotal, unpaid),
+              _summaryCard(patient, total, doctorTotal, outstanding),
               if (patient.note.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 AppCard(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.notes_outlined,
+                      Icon(Icons.notes_outlined,
                           color: AppColors.textSecondary, size: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           patient.note,
-                          style: const TextStyle(color: AppColors.textPrimary),
+                          style: TextStyle(color: AppColors.textPrimary),
                         ),
                       ),
                     ],
@@ -89,7 +92,7 @@ class PatientDetailScreen extends StatelessWidget {
               const SizedBox(height: 22),
               Text(
                 'İşlemler (${treatments.length})',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
@@ -108,7 +111,7 @@ class PatientDetailScreen extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: TreatmentTile(
                         treatment: t,
-                        onTogglePaid: () => provider.togglePaid(t),
+                        onPaymentTap: () => showPaymentEditor(context, t),
                         onTap: () => _editTreatment(context, t.id),
                       ),
                     )),

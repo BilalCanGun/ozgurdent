@@ -108,11 +108,11 @@ class _ToothChartState extends State<ToothChart> {
             color: active ? AppColors.surface : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
             boxShadow: active
-                ? const [
+                ? [
                     BoxShadow(
                       color: AppColors.shadow,
                       blurRadius: 8,
-                      offset: Offset(0, 2),
+                      offset: const Offset(0, 2),
                     )
                   ]
                 : null,
@@ -132,7 +132,7 @@ class _ToothChartState extends State<ToothChart> {
   Widget _archLabel(String text) => Center(
         child: Text(
           text,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.textSecondary,
             fontSize: 12,
             fontWeight: FontWeight.w600,
@@ -191,11 +191,11 @@ class _ToothChartState extends State<ToothChart> {
             width: 1.6,
           ),
           boxShadow: selected
-              ? const [
+              ? [
                   BoxShadow(
                     color: AppColors.shadow,
                     blurRadius: 12,
-                    offset: Offset(0, 5),
+                    offset: const Offset(0, 5),
                   )
                 ]
               : null,
@@ -235,12 +235,12 @@ class _ToothChartState extends State<ToothChart> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.check_circle, color: AppColors.primary, size: 18),
+          Icon(Icons.check_circle, color: AppColors.primary, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               'Seçili dişler: ${sorted.join(', ')}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
               ),
@@ -248,7 +248,7 @@ class _ToothChartState extends State<ToothChart> {
           ),
           GestureDetector(
             onTap: () => widget.onChanged({}),
-            child: const Text(
+            child: Text(
               'Temizle',
               style: TextStyle(
                 color: AppColors.danger,

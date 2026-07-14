@@ -8,7 +8,7 @@ class StatTile extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
-  final Color color;
+  final Color? color;
   final String? subtitle;
 
   const StatTile({
@@ -16,12 +16,13 @@ class StatTile extends StatelessWidget {
     required this.label,
     required this.value,
     required this.icon,
-    this.color = AppColors.primary,
+    this.color,
     this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color = this.color ?? AppColors.primary;
     return AppCard(
       padding: const EdgeInsets.all(15),
       child: Column(
@@ -53,7 +54,7 @@ class StatTile extends StatelessWidget {
                 child: Text(
                   value,
                   maxLines: 1,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 23,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
@@ -65,7 +66,7 @@ class StatTile extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12.5,
                   color: AppColors.textSecondary,
                   fontWeight: FontWeight.w500,

@@ -1,5 +1,20 @@
 import 'procedure_type.dart';
 
+/// Bir işlemin tahsilat / ödeme durumu (rozetler için).
+enum PaymentStage {
+  /// Klinik hastadan hiç tahsilat yapmadı.
+  pending,
+
+  /// Klinik kısmen tahsil etti (taksit sürüyor).
+  partial,
+
+  /// Klinik tamamını tahsil etti fakat doktor payını almadı.
+  clinicCollected,
+
+  /// Klinik tahsil etti ve doktor da payını aldı.
+  settled,
+}
+
 /// Bir hastaya uygulanan/planlanan tek bir işlem kaydı.
 /// Aynı zamanda randevu bilgisini (tarih + saat) taşır.
 class Treatment {
@@ -37,7 +52,16 @@ class Treatment {
   final DateTime appointmentDate;
 
   final String note;
-  final bool isPaid;
+
+  // --- Ödeme / tahsilat ---
+  /// Taksit sayısı (1 = peşin).
+  final int installmentCount;
+
+  /// Kliniğin hastadan tahsil ettiği tutar (0..totalPrice).
+  final double collectedAmount;
+
+  /// Doktor kendi payını klinikten aldı mı.
+  final bool doctorPaid;
 
   /// İşleme ait fotoğrafların dosya yolları (kronolojik).
   final List<String> photos;
@@ -59,10 +83,41 @@ class Treatment {
     required this.clinicShare,
     required this.appointmentDate,
     required this.note,
-    required this.isPaid,
+    this.installmentCount = 1,
+    this.collectedAmount = 0,
+    this.doctorPaid = false,
     this.photos = const [],
     required this.createdAt,
   });
+
+  // --- Türetilmiş ödeme durumu ---
+
+  /// Klinik ödemenin tamamını hastadan tahsil etti mi.
+  bool get clinicCollected => collectedAmount >= totalPrice - 0.005;
+
+  /// Klinik kısmen tahsil etti mi (taksit sürüyor).
+  bool get partiallyCollected =>
+      collectedAmount > 0.005 && !clinicCollected;
+
+  /// Hastadan tahsil edilmeyi bekleyen tutar.
+  double get remaining {
+    final r = totalPrice - collectedAmount;
+    return r < 0 ? 0 : r;
+  }
+
+  /// Doktorun almayı beklediği pay (klinik tahsil etti ama doktor almadı).
+  bool get awaitingDoctorPayout => clinicCollected && !doctorPaid;
+
+  /// İşlem tümüyle kapandı mı (klinik tahsil etti + doktor payını aldı).
+  bool get fullySettled => clinicCollected && doctorPaid;
+
+  PaymentStage get stage {
+    if (clinicCollected) {
+      return doctorPaid ? PaymentStage.settled : PaymentStage.clinicCollected;
+    }
+    if (partiallyCollected) return PaymentStage.partial;
+    return PaymentStage.pending;
+  }
 
   Treatment copyWith({
     String? procedureId,
@@ -77,7 +132,9 @@ class Treatment {
     double? clinicShare,
     DateTime? appointmentDate,
     String? note,
-    bool? isPaid,
+    int? installmentCount,
+    double? collectedAmount,
+    bool? doctorPaid,
     List<String>? photos,
   }) {
     return Treatment(
@@ -95,7 +152,9 @@ class Treatment {
       clinicShare: clinicShare ?? this.clinicShare,
       appointmentDate: appointmentDate ?? this.appointmentDate,
       note: note ?? this.note,
-      isPaid: isPaid ?? this.isPaid,
+      installmentCount: installmentCount ?? this.installmentCount,
+      collectedAmount: collectedAmount ?? this.collectedAmount,
+      doctorPaid: doctorPaid ?? this.doctorPaid,
       photos: photos ?? this.photos,
       createdAt: createdAt,
     );
@@ -116,29 +175,43 @@ class Treatment {
         'clinicShare': clinicShare,
         'appointmentDate': appointmentDate.toIso8601String(),
         'note': note,
-        'isPaid': isPaid,
+        'installmentCount': installmentCount,
+        'collectedAmount': collectedAmount,
+        'doctorPaid': doctorPaid,
         'photos': photos,
         'createdAt': createdAt.toIso8601String(),
       };
 
-  factory Treatment.fromMap(Map<dynamic, dynamic> map) => Treatment(
-        id: map['id'] as String,
-        patientId: map['patientId'] as String,
-        procedureId: map['procedureId'] as String,
-        procedureName: map['procedureName'] as String,
-        model: PricingModelX.fromKey(map['model'] as String),
-        teeth: (map['teeth'] as List).map((e) => e.toString()).toList(),
-        totalPrice: (map['totalPrice'] as num).toDouble(),
-        labFee: (map['labFee'] as num?)?.toDouble() ?? 0,
-        percentage: (map['percentage'] as num?)?.toDouble() ?? 0,
-        netAmount: (map['netAmount'] as num?)?.toDouble() ?? 0,
-        doctorShare: (map['doctorShare'] as num).toDouble(),
-        clinicShare: (map['clinicShare'] as num).toDouble(),
-        appointmentDate: DateTime.parse(map['appointmentDate'] as String),
-        note: map['note'] as String? ?? '',
-        isPaid: map['isPaid'] as bool? ?? false,
-        photos: (map['photos'] as List?)?.map((e) => e.toString()).toList() ??
-            const [],
-        createdAt: DateTime.parse(map['createdAt'] as String),
-      );
+  factory Treatment.fromMap(Map<dynamic, dynamic> map) {
+    final total = (map['totalPrice'] as num).toDouble();
+    // Eski kayıt uyumluluğu: tek 'isPaid' bayrağı vardı.
+    final legacyPaid = map['isPaid'] as bool?;
+    final collected = (map['collectedAmount'] as num?)?.toDouble() ??
+        (legacyPaid == true ? total : 0);
+    final doctorPaid =
+        map['doctorPaid'] as bool? ?? (legacyPaid == true);
+
+    return Treatment(
+      id: map['id'] as String,
+      patientId: map['patientId'] as String,
+      procedureId: map['procedureId'] as String,
+      procedureName: map['procedureName'] as String,
+      model: PricingModelX.fromKey(map['model'] as String),
+      teeth: (map['teeth'] as List).map((e) => e.toString()).toList(),
+      totalPrice: total,
+      labFee: (map['labFee'] as num?)?.toDouble() ?? 0,
+      percentage: (map['percentage'] as num?)?.toDouble() ?? 0,
+      netAmount: (map['netAmount'] as num?)?.toDouble() ?? 0,
+      doctorShare: (map['doctorShare'] as num).toDouble(),
+      clinicShare: (map['clinicShare'] as num).toDouble(),
+      appointmentDate: DateTime.parse(map['appointmentDate'] as String),
+      note: map['note'] as String? ?? '',
+      installmentCount: (map['installmentCount'] as num?)?.toInt() ?? 1,
+      collectedAmount: collected,
+      doctorPaid: doctorPaid,
+      photos: (map['photos'] as List?)?.map((e) => e.toString()).toList() ??
+          const [],
+      createdAt: DateTime.parse(map['createdAt'] as String),
+    );
+  }
 }

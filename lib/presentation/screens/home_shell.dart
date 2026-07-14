@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/responsive.dart';
 import '../providers/clinic_provider.dart';
+import '../providers/theme_controller.dart';
 import 'dashboard_screen.dart';
 import 'patients_screen.dart';
 import 'statistics_screen.dart';
@@ -37,6 +38,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<ThemeController>(); // Tema değişince kabuğu yeniden kur.
     final provider = context.watch<ClinicProvider>();
     if (!provider.isLoaded) {
       return const Scaffold(

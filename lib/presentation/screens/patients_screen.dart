@@ -6,6 +6,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/utils/responsive.dart';
 import '../../data/models/patient.dart';
 import '../providers/clinic_provider.dart';
+import '../providers/theme_controller.dart';
 import '../widgets/app_card.dart';
 import '../widgets/common_bits.dart';
 import '../widgets/empty_state.dart';
@@ -24,6 +25,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<ThemeController>();
     final provider = context.watch<ClinicProvider>();
     final patients = provider.searchPatients(_query);
 
@@ -114,7 +116,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
   Widget _patientCard(
       BuildContext context, ClinicProvider provider, Patient p) {
     final total = provider.patientTotal(p.id);
-    final unpaid = provider.patientUnpaid(p.id);
+    final outstanding = provider.patientOutstanding(p.id);
     final count = provider.treatmentsForPatient(p.id).length;
 
     return AppCard(
@@ -130,7 +132,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
             backgroundColor: AppColors.surfaceAlt,
             child: Text(
               _initials(p.name),
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.primary,
                 fontWeight: FontWeight.w800,
               ),
@@ -143,7 +145,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
               children: [
                 Text(
                   p.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -154,7 +156,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                 const SizedBox(height: 3),
                 Text(
                   p.phone.isNotEmpty ? p.phone : '$count işlem',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,
                   ),
@@ -167,38 +169,41 @@ class _PatientsScreenState extends State<PatientsScreen> {
             children: [
               Text(
                 Fmt.money(total),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 4),
-              if (unpaid > 0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'Borç ${Fmt.money(unpaid)}',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.warning,
-                    ),
-                  ),
-                )
+              if (outstanding > 0)
+                _tag('Borç ${Fmt.money(outstanding)}', AppColors.warning)
+              else if (total > 0)
+                _tag('Tahsil edildi', AppColors.success)
               else
-                const PaidBadge(paid: true),
+                _tag('İşlem yok', AppColors.textSecondary),
             ],
           ),
         ],
       ),
     );
   }
+
+  Widget _tag(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      );
 
   String _initials(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));

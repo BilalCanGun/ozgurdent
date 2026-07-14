@@ -12,11 +12,45 @@ import '../../data/local/photo_storage.dart';
 import '../../data/models/procedure_type.dart';
 import '../../data/models/treatment.dart';
 import '../providers/clinic_provider.dart';
+import '../providers/theme_controller.dart';
 import '../widgets/app_card.dart';
 import '../widgets/tooth_chart.dart';
 import 'photo_viewer_screen.dart';
 
+enum _CollectMode { pending, partial, full }
+
+/// Formdaki tek bir işlem satırının düzenlenebilir durumu.
+class _Entry {
+  ProcedureType procedure;
+  Set<String> teeth = {};
+  final priceCtrl = TextEditingController();
+  final labFeeCtrl = TextEditingController();
+  final manualNameCtrl = TextEditingController();
+  final manualPctCtrl = TextEditingController(text: '30');
+  final noteCtrl = TextEditingController();
+  final collectedCtrl = TextEditingController();
+  _CollectMode collectMode = _CollectMode.pending;
+  int installments = 1;
+  bool doctorPaid = false;
+  List<String> photos = [];
+
+  String? existingId;
+  DateTime? createdAt;
+
+  _Entry(this.procedure);
+
+  void dispose() {
+    priceCtrl.dispose();
+    labFeeCtrl.dispose();
+    manualNameCtrl.dispose();
+    manualPctCtrl.dispose();
+    noteCtrl.dispose();
+    collectedCtrl.dispose();
+  }
+}
+
 /// İşlem (ve aynı zamanda randevu) ekleme / düzenleme ekranı.
+/// Ekleme modunda aynı randevuya birden fazla işlem eklenebilir.
 class TreatmentFormScreen extends StatefulWidget {
   final String patientId;
   final String? treatmentId;
@@ -33,89 +67,105 @@ class TreatmentFormScreen extends StatefulWidget {
 
 class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
   final _formKey = GlobalKey<FormState>();
-
-  late ProcedureType _procedure;
-  Set<String> _teeth = {};
-
-  final _priceCtrl = TextEditingController();
-  final _labFeeCtrl = TextEditingController();
-  final _noteCtrl = TextEditingController();
-  final _manualNameCtrl = TextEditingController();
-  final _manualPctCtrl = TextEditingController(text: '30');
+  final List<_Entry> _entries = [];
 
   DateTime _date = DateTime.now();
-  bool _isPaid = false;
-  List<String> _photos = [];
-
   Treatment? _editing;
 
   bool get _isEdit => widget.treatmentId != null;
 
+  List<ProcedureType> get _catalog {
+    final list = context.read<ClinicProvider>().procedures;
+    return list.isEmpty ? ProcedureCatalog.all : list;
+  }
+
   @override
   void initState() {
     super.initState();
-    _procedure = ProcedureCatalog.all.first;
+    final provider = context.read<ClinicProvider>();
 
     if (_isEdit) {
-      final provider = context.read<ClinicProvider>();
       _editing = provider.treatments
           .where((t) => t.id == widget.treatmentId)
           .cast<Treatment?>()
           .firstWhere((t) => true, orElse: () => null);
       final t = _editing;
+      final proc = (t != null ? provider.procedureById(t.procedureId) : null) ??
+          ProcedureCatalog.manual;
+      final e = _Entry(proc);
       if (t != null) {
-        _procedure = ProcedureCatalog.byId(t.procedureId) ??
-            ProcedureCatalog.manual;
+        e.existingId = t.id;
+        e.createdAt = t.createdAt;
         if (t.procedureId == ProcedureCatalog.manual.id) {
-          _manualNameCtrl.text = t.procedureName;
-          _manualPctCtrl.text = (t.percentage * 100).toStringAsFixed(0);
+          e.manualNameCtrl.text = t.procedureName;
+          e.manualPctCtrl.text = (t.percentage * 100).toStringAsFixed(0);
         }
-        _teeth = t.teeth.toSet();
-        _priceCtrl.text = _trimNum(t.totalPrice);
-        _labFeeCtrl.text = t.labFee > 0 ? _trimNum(t.labFee) : '';
-        _noteCtrl.text = t.note;
+        e.teeth = t.teeth.toSet();
+        e.priceCtrl.text = _trimNum(t.totalPrice);
+        e.labFeeCtrl.text = t.labFee > 0 ? _trimNum(t.labFee) : '';
+        e.noteCtrl.text = t.note;
+        e.installments = t.installmentCount;
+        e.doctorPaid = t.doctorPaid;
+        e.photos = [...t.photos];
+        if (t.clinicCollected) {
+          e.collectMode = _CollectMode.full;
+        } else if (t.partiallyCollected) {
+          e.collectMode = _CollectMode.partial;
+          e.collectedCtrl.text = _trimNum(t.collectedAmount);
+        }
         _date = t.appointmentDate;
-        _isPaid = t.isPaid;
-        _photos = [...t.photos];
       }
+      _entries.add(e);
+    } else {
+      _entries.add(_Entry(_catalog.first));
     }
-
-    _priceCtrl.addListener(_refresh);
-    _labFeeCtrl.addListener(_refresh);
-    _manualPctCtrl.addListener(_refresh);
   }
-
-  void _refresh() => setState(() {});
 
   @override
   void dispose() {
-    _priceCtrl.dispose();
-    _labFeeCtrl.dispose();
-    _noteCtrl.dispose();
-    _manualNameCtrl.dispose();
-    _manualPctCtrl.dispose();
+    for (final e in _entries) {
+      e.dispose();
+    }
     super.dispose();
   }
 
   String _trimNum(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
 
-  double get _price => double.tryParse(_priceCtrl.text.replaceAll(',', '.')) ?? 0;
-  double get _labFee =>
-      double.tryParse(_labFeeCtrl.text.replaceAll(',', '.')) ?? 0;
-  double get _manualPct =>
-      (double.tryParse(_manualPctCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
+  double _priceOf(_Entry e) =>
+      double.tryParse(e.priceCtrl.text.replaceAll(',', '.')) ?? 0;
+  double _labFeeOf(_Entry e) =>
+      double.tryParse(e.labFeeCtrl.text.replaceAll(',', '.')) ?? 0;
+  double _manualPctOf(_Entry e) =>
+      (double.tryParse(e.manualPctCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
 
-  bool get _isManual => _procedure.id == ProcedureCatalog.manual.id;
+  bool _isManual(_Entry e) => e.procedure.id == ProcedureCatalog.manual.id;
 
-  PaymentShares get _shares => _procedure.computeShares(
-        totalPrice: _price,
-        labFee: _labFee,
-        overridePercentage: _isManual ? _manualPct : null,
+  PaymentShares _sharesOf(_Entry e) => e.procedure.computeShares(
+        totalPrice: _priceOf(e),
+        labFee: _labFeeOf(e),
+        overridePercentage: _isManual(e) ? _manualPctOf(e) : null,
       );
+
+  double _collectedOf(_Entry e) {
+    switch (e.collectMode) {
+      case _CollectMode.pending:
+        return 0;
+      case _CollectMode.full:
+        return _priceOf(e);
+      case _CollectMode.partial:
+        final v =
+            double.tryParse(e.collectedCtrl.text.replaceAll(',', '.')) ?? 0;
+        return v.clamp(0, _priceOf(e)).toDouble();
+    }
+  }
+
+  double get _totalDoctor =>
+      _entries.fold(0.0, (s, e) => s + _sharesOf(e).doctor);
 
   @override
   Widget build(BuildContext context) {
+    context.watch<ThemeController>();
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEdit ? 'İşlemi Düzenle' : 'Yeni İşlem'),
@@ -132,186 +182,293 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
       body: SafeArea(
         bottom: false,
         child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 640),
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-              children: [
-                _sectionTitle('İşlem Türü'),
-                const SizedBox(height: 10),
-                _procedurePicker(),
-                if (_isManual) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: TextFormField(
-                          controller: _manualNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'İşlem adı',
-                          ),
-                          validator: (v) => _isManual &&
-                                  (v == null || v.trim().isEmpty)
-                              ? 'Gerekli'
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _manualPctCtrl,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9.,]'))
-                          ],
-                          decoration: const InputDecoration(
-                            labelText: 'Yüzde',
-                            suffixText: '%',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 24),
-                _sectionTitle('Diş Seçimi (FDI)'),
-                const SizedBox(height: 4),
-                const Text(
-                  'İşlemin uygulanacağı dişleri seç.',
-                  style: TextStyle(
-                      color: AppColors.textSecondary, fontSize: 13),
-                ),
-                const SizedBox(height: 14),
-                AppCard(
-                  padding: const EdgeInsets.all(10),
-                  child: ToothChart(
-                    selected: _teeth,
-                    onChanged: (s) => setState(() => _teeth = s),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                _sectionTitle('Ücret'),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: _priceCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+                children: [
+                  _sectionTitle('Randevu Tarihi'),
+                  const SizedBox(height: 10),
+                  _dateTimePickers(),
+                  const SizedBox(height: 24),
+                  for (int i = 0; i < _entries.length; i++) ...[
+                    _entryCard(i),
+                    const SizedBox(height: 16),
                   ],
-                  decoration: const InputDecoration(
-                    labelText: 'Hastadan alınan toplam ücret *',
-                    prefixIcon: Icon(Icons.payments_outlined),
-                    suffixText: '₺',
-                  ),
-                  validator: (v) {
-                    final val =
-                        double.tryParse((v ?? '').replaceAll(',', '.')) ?? 0;
-                    return val <= 0 ? 'Geçerli bir ücret gir' : null;
-                  },
-                ),
-                if (_procedure.requiresLabFee) ...[
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _labFeeCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Teknisyen / laboratuvar bedeli',
-                      prefixIcon: Icon(Icons.biotech_outlined),
-                      suffixText: '₺',
+                  if (!_isEdit)
+                    OutlinedButton.icon(
+                      onPressed: _addEntry,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Başka işlem ekle'),
                     ),
-                  ),
                 ],
-                const SizedBox(height: 16),
-                _sharePreview(),
-                const SizedBox(height: 24),
-                _sectionTitle('Randevu Tarihi'),
-                const SizedBox(height: 10),
-                _dateTimePickers(),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    _sectionTitle('Fotoğraflar'),
-                    const SizedBox(width: 8),
-                    if (_photos.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceAlt,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${_photos.length}',
-                          style: const TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'İşlemin öncesi/sonrası fotoğraflarını ekle.',
-                  style: TextStyle(
-                      color: AppColors.textSecondary, fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                _photoSection(),
-                const SizedBox(height: 24),
-                _sectionTitle('Not & Ödeme'),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: _noteCtrl,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'İşlem notu (opsiyonel)',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _paidSwitch(),
-              ],
+              ),
             ),
           ),
         ),
       ),
-      ),
     );
+  }
+
+  void _addEntry() {
+    setState(() => _entries.add(_Entry(_catalog.first)));
+  }
+
+  void _removeEntry(int i) {
+    setState(() {
+      _entries[i].dispose();
+      _entries.removeAt(i);
+    });
   }
 
   Widget _sectionTitle(String text) => Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w800,
           color: AppColors.textPrimary,
         ),
       );
 
-  Widget _procedurePicker() {
+  // ---------------------------------------------------------------------------
+  // İŞLEM KARTI
+  // ---------------------------------------------------------------------------
+  Widget _entryCard(int i) {
+    final e = _entries[i];
+    final shares = _sharesOf(e);
     return AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      onTap: _openProcedureSheet,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${i + 1}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'İşlem ${i + 1}',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (_entries.length > 1)
+                IconButton(
+                  icon: Icon(Icons.close, color: AppColors.textSecondary),
+                  onPressed: () => _removeEntry(i),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _procedurePicker(e),
+          if (_isManual(e)) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: TextFormField(
+                    controller: e.manualNameCtrl,
+                    decoration: const InputDecoration(labelText: 'İşlem adı'),
+                    validator: (v) => _isManual(e) &&
+                            (v == null || v.trim().isEmpty)
+                        ? 'Gerekli'
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: e.manualPctCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Yüzde',
+                      suffixText: '%',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
+          _teethRow(e),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: e.priceCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+            ],
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Hastadan alınan toplam ücret *',
+              prefixIcon: Icon(Icons.payments_outlined),
+              suffixText: '₺',
+            ),
+            validator: (v) {
+              final val = double.tryParse((v ?? '').replaceAll(',', '.')) ?? 0;
+              return val <= 0 ? 'Geçerli bir ücret gir' : null;
+            },
+          ),
+          if (e.procedure.requiresLabFee) ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: e.labFeeCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+              ],
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Teknisyen / laboratuvar bedeli',
+                prefixIcon: Icon(Icons.biotech_outlined),
+                suffixText: '₺',
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          _sharePreview(shares),
+          const SizedBox(height: 16),
+          _paymentSection(e),
+          const SizedBox(height: 12),
+          _photoSection(e),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: e.noteCtrl,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'İşlem notu (opsiyonel)',
+              alignLabelWithHint: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _teethRow(_Entry e) {
+    final sorted = e.teeth.toList()..sort();
+    return GestureDetector(
+      onTap: () => _openToothSheet(e),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.medical_information_outlined,
+                color: AppColors.primary, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                sorted.isEmpty ? 'Diş seç (opsiyonel)' : 'Dişler: ${sorted.join(', ')}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: sorted.isEmpty
+                      ? AppColors.textSecondary
+                      : AppColors.textPrimary,
+                ),
+              ),
+            ),
+            Icon(Icons.edit_outlined,
+                size: 18, color: AppColors.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openToothSheet(_Entry e) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.85,
+          maxChildSize: 0.95,
+          builder: (_, controller) => StatefulBuilder(
+            builder: (_, setSheet) => ListView(
+              controller: controller,
+              padding: const EdgeInsets.all(18),
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ToothChart(
+                  selected: e.teeth,
+                  onChanged: (s) {
+                    setSheet(() => e.teeth = s);
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Tamam'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _procedurePicker(_Entry e) {
+    return AppCard(
+      color: AppColors.surfaceAlt,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      onTap: () => _openProcedureSheet(e),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: AppColors.surfaceAlt,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.medical_services_outlined,
+            child: Icon(Icons.medical_services_outlined,
                 color: AppColors.primary, size: 20),
           ),
           const SizedBox(width: 14),
@@ -320,18 +477,18 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isManual && _manualNameCtrl.text.isNotEmpty
-                      ? _manualNameCtrl.text
-                      : _procedure.name,
-                  style: const TextStyle(
+                  _isManual(e) && e.manualNameCtrl.text.isNotEmpty
+                      ? e.manualNameCtrl.text
+                      : e.procedure.name,
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
                 ),
                 Text(
-                  _pricingRuleText(_procedure),
-                  style: const TextStyle(
+                  _pricingRuleText(e.procedure),
+                  style: TextStyle(
                     fontSize: 12.5,
                     color: AppColors.textSecondary,
                   ),
@@ -339,7 +496,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
               ],
             ),
           ),
-          const Icon(Icons.expand_more, color: AppColors.textSecondary),
+          Icon(Icons.expand_more, color: AppColors.textSecondary),
         ],
       ),
     );
@@ -357,8 +514,8 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
     }
   }
 
-  Future<void> _openProcedureSheet() async {
-    final items = [...ProcedureCatalog.all, ProcedureCatalog.manual];
+  Future<void> _openProcedureSheet(_Entry e) async {
+    final items = [..._catalog, ProcedureCatalog.manual];
     final selected = await showModalBottomSheet<ProcedureType>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -382,8 +539,8 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.all(16),
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Text(
                   'İşlem Seç',
                   style: TextStyle(
@@ -399,9 +556,9 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   itemCount: items.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) {
-                    final p = items[i];
-                    final active = p.id == _procedure.id;
+                  itemBuilder: (_, idx) {
+                    final p = items[idx];
+                    final active = p.id == e.procedure.id;
                     return InkWell(
                       borderRadius: BorderRadius.circular(14),
                       onTap: () => Navigator.pop(ctx, p),
@@ -433,14 +590,14 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
                                 children: [
                                   Text(
                                     p.name,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.textPrimary,
                                     ),
                                   ),
                                   Text(
                                     _pricingRuleText(p),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12.5,
                                       color: AppColors.textSecondary,
                                     ),
@@ -449,7 +606,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
                               ),
                             ),
                             if (active)
-                              const Icon(Icons.check_circle,
+                              Icon(Icons.check_circle,
                                   color: AppColors.primary),
                           ],
                         ),
@@ -466,44 +623,35 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
 
     if (selected != null) {
       setState(() {
-        _procedure = selected;
-        if (!selected.requiresLabFee) _labFeeCtrl.clear();
+        e.procedure = selected;
+        if (!selected.requiresLabFee) e.labFeeCtrl.clear();
+        // Varsayılan ücret varsa ve alan boşsa ön-doldur.
+        if (selected.defaultPrice > 0 && e.priceCtrl.text.trim().isEmpty) {
+          e.priceCtrl.text = _trimNum(selected.defaultPrice);
+        }
       });
     }
   }
 
-  Widget _sharePreview() {
-    final shares = _shares;
-    return AppCard(
-      color: AppColors.surfaceAlt,
-      border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
-      child: Column(
+  Widget _sharePreview(PaymentShares shares) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _shareBox(
-                  'Sana Kalan',
-                  shares.doctor,
-                  AppColors.doctorShare,
-                  Icons.account_balance_wallet_outlined,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _shareBox(
-                  'Kliniğe Kalan',
-                  shares.clinic,
-                  AppColors.clinicShare,
-                  Icons.business_outlined,
-                ),
-              ),
-            ],
+          Expanded(
+            child: _shareBox('Sana Kalan', shares.doctor, AppColors.doctorShare,
+                Icons.account_balance_wallet_outlined),
           ),
-          if (_price > 0) ...[
-            const SizedBox(height: 12),
-            _shareBar(shares.doctor, shares.clinic),
-          ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: _shareBox('Kliniğe Kalan', shares.clinic,
+                AppColors.clinicShare, Icons.business_outlined),
+          ),
         ],
       ),
     );
@@ -511,7 +659,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
 
   Widget _shareBox(String label, double value, Color color, IconData icon) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
@@ -520,11 +668,11 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: color, size: 18),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             Fmt.money(value),
             style: TextStyle(
-              fontSize: 19,
+              fontSize: 17,
               fontWeight: FontWeight.w800,
               color: color,
             ),
@@ -533,37 +681,359 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
           ),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // ÖDEME / TAHSİLAT (işlem başına)
+  // ---------------------------------------------------------------------------
+  Widget _paymentSection(_Entry e) {
+    final clinicCollected = _collectedOf(e) >= _priceOf(e) - 0.005 &&
+        _priceOf(e) > 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Tahsilat',
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _collectSeg(e, 'Bekliyor', _CollectMode.pending,
+                Icons.schedule, AppColors.warning),
+            _collectSeg(e, 'Kısmi', _CollectMode.partial,
+                Icons.timelapse, AppColors.info),
+            _collectSeg(e, 'Tamamı', _CollectMode.full,
+                Icons.check_circle, AppColors.success),
+          ],
+        ),
+        if (e.collectMode == _CollectMode.partial) ...[
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: e.collectedCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+            ],
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Tahsil edilen tutar',
+              prefixIcon: Icon(Icons.payments_outlined),
+              suffixText: '₺',
             ),
           ),
         ],
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _installmentStepper(e),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _doctorPaidChip(e, clinicCollected),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _collectSeg(
+      _Entry e, String label, _CollectMode m, IconData icon, Color color) {
+    final active = e.collectMode == m;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => e.collectMode = m),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color:
+                active ? color.withValues(alpha: 0.14) : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: active ? color : Colors.transparent,
+              width: 1.3,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon,
+                  size: 18, color: active ? color : AppColors.textSecondary),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: active ? color : AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _shareBar(double doctor, double clinic) {
-    final total = doctor + clinic;
-    final dFlex = total <= 0 ? 1 : (doctor / total * 1000).round();
-    final cFlex = total <= 0 ? 1 : (clinic / total * 1000).round();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+  Widget _installmentStepper(_Entry e) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
         children: [
-          Expanded(
-            flex: dFlex == 0 ? 1 : dFlex,
-            child: Container(height: 10, color: AppColors.doctorShare),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: e.installments > 1
+                ? () => setState(() => e.installments--)
+                : null,
+            icon: const Icon(Icons.remove, size: 18),
           ),
           Expanded(
-            flex: cFlex == 0 ? 1 : cFlex,
-            child: Container(height: 10, color: AppColors.clinicShare),
+            child: Center(
+              child: Text(
+                e.installments == 1 ? 'Peşin' : '${e.installments}x',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: e.installments < 12
+                ? () => setState(() => e.installments++)
+                : null,
+            icon: const Icon(Icons.add, size: 18),
           ),
         ],
       ),
     );
   }
 
+  Widget _doctorPaidChip(_Entry e, bool clinicCollected) {
+    final on = e.doctorPaid && clinicCollected;
+    return GestureDetector(
+      onTap: clinicCollected
+          ? () => setState(() => e.doctorPaid = !e.doctorPaid)
+          : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: on
+              ? AppColors.success.withValues(alpha: 0.14)
+              : AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: on ? AppColors.success : Colors.transparent,
+            width: 1.3,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              on ? Icons.verified : Icons.account_balance_wallet_outlined,
+              size: 16,
+              color: clinicCollected
+                  ? (on ? AppColors.success : AppColors.violet)
+                  : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Payı aldım',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: clinicCollected
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // FOTOĞRAFLAR (işlem başına)
+  // ---------------------------------------------------------------------------
+  Widget _photoSection(_Entry e) {
+    return SizedBox(
+      height: 92,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _addPhotoTile(e),
+          for (int i = 0; i < e.photos.length; i++) _photoThumb(e, i),
+        ],
+      ),
+    );
+  }
+
+  Widget _addPhotoTile(_Entry e) {
+    return GestureDetector(
+      onTap: () => _pickPhotoSource(e),
+      child: Container(
+        width: 84,
+        margin: const EdgeInsets.only(right: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.4),
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_a_photo_outlined,
+                color: AppColors.primary, size: 26),
+            const SizedBox(height: 4),
+            Text(
+              'Fotoğraf',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _photoThumb(_Entry e, int i) {
+    return GestureDetector(
+      onTap: () => _openViewer(e, i),
+      child: Container(
+        width: 84,
+        margin: const EdgeInsets.only(right: 10),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(File(e.photos[i]), fit: BoxFit.cover),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: GestureDetector(
+                onTap: () => _removePhoto(e, i),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close,
+                      color: Colors.white, size: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openViewer(_Entry e, int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PhotoViewerScreen(
+          photos: e.photos,
+          initialIndex: index,
+          onDelete: (i) => _removePhoto(e, i, deleteFile: true),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickPhotoSource(_Entry e) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading:
+                  Icon(Icons.photo_camera_outlined, color: AppColors.primary),
+              title: const Text('Kamera ile çek'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading:
+                  Icon(Icons.photo_library_outlined, color: AppColors.primary),
+              title: const Text('Galeriden seç'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    try {
+      final path = await PhotoStorage.capture(source);
+      if (path != null) setState(() => e.photos.add(path));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fotoğraf eklenemedi.')),
+        );
+      }
+    }
+  }
+
+  void _removePhoto(_Entry e, int i, {bool deleteFile = false}) {
+    if (i < 0 || i >= e.photos.length) return;
+    final path = e.photos[i];
+    setState(() => e.photos.removeAt(i));
+    if (deleteFile) PhotoStorage.delete(path);
+  }
+
+  // ---------------------------------------------------------------------------
+  // TARİH / SAAT
+  // ---------------------------------------------------------------------------
   Widget _dateTimePickers() {
     return Row(
       children: [
@@ -607,14 +1077,14 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),
                 ),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
@@ -637,8 +1107,8 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
     );
     if (picked != null) {
       setState(() {
-        _date =
-            DateTime(picked.year, picked.month, picked.day, _date.hour, _date.minute);
+        _date = DateTime(
+            picked.year, picked.month, picked.day, _date.hour, _date.minute);
       });
     }
   }
@@ -656,195 +1126,14 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
     }
   }
 
-  Widget _paidSwitch() {
-    return AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Row(
-        children: [
-          Icon(
-            _isPaid ? Icons.check_circle : Icons.schedule,
-            color: _isPaid ? AppColors.success : AppColors.warning,
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Ödeme alındı',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-          Switch(
-            value: _isPaid,
-            activeColor: AppColors.success,
-            onChanged: (v) => setState(() => _isPaid = v),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _photoSection() {
-    return SizedBox(
-      height: 110,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          _addPhotoTile(),
-          for (int i = 0; i < _photos.length; i++) _photoThumb(i),
-        ],
-      ),
-    );
-  }
-
-  Widget _addPhotoTile() {
-    return GestureDetector(
-      onTap: _pickPhotoSource,
-      child: Container(
-        width: 100,
-        margin: const EdgeInsets.only(right: 12),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.4),
-            width: 1.5,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.add_a_photo_outlined,
-                color: AppColors.primary, size: 30),
-            SizedBox(height: 6),
-            Text(
-              'Ekle',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _photoThumb(int i) {
-    return GestureDetector(
-      onTap: () => _openViewer(i),
-      child: Container(
-        width: 100,
-        margin: const EdgeInsets.only(right: 12),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.file(File(_photos[i]), fit: BoxFit.cover),
-            Positioned(
-              top: 4,
-              right: 4,
-              child: GestureDetector(
-                onTap: () => _removePhoto(i),
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.close,
-                      color: Colors.white, size: 16),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _openViewer(int index) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PhotoViewerScreen(
-          photos: _photos,
-          initialIndex: index,
-          onDelete: (i) => _removePhoto(i, deleteFile: true),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickPhotoSource() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined,
-                  color: AppColors.primary),
-              title: const Text('Kamera ile çek'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppColors.primary),
-              title: const Text('Galeriden seç'),
-              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (source == null) return;
-    try {
-      final path = await PhotoStorage.capture(source);
-      if (path != null) setState(() => _photos.add(path));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Fotoğraf eklenemedi.')),
-        );
-      }
-    }
-  }
-
-  void _removePhoto(int i, {bool deleteFile = false}) {
-    if (i < 0 || i >= _photos.length) return;
-    final path = _photos[i];
-    setState(() => _photos.removeAt(i));
-    if (deleteFile) PhotoStorage.delete(path);
-  }
-
+  // ---------------------------------------------------------------------------
+  // KAYDET
+  // ---------------------------------------------------------------------------
   Widget _bottomBar() {
-    final shares = _shares;
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.surface,
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
@@ -854,12 +1143,12 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Sana kalan',
+                Text('Toplam sana kalan',
                     style: TextStyle(
                         fontSize: 12, color: AppColors.textSecondary)),
                 Text(
-                  Fmt.money(shares.doctor),
-                  style: const TextStyle(
+                  Fmt.money(_totalDoctor),
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: AppColors.primary,
@@ -872,7 +1161,11 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
               child: FilledButton.icon(
                 onPressed: _save,
                 icon: const Icon(Icons.check),
-                label: Text(_isEdit ? 'Güncelle' : 'Kaydet'),
+                label: Text(_isEdit
+                    ? 'Güncelle'
+                    : (_entries.length > 1
+                        ? '${_entries.length} işlemi kaydet'
+                        : 'Kaydet')),
               ),
             ),
           ],
@@ -885,31 +1178,39 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final provider = context.read<ClinicProvider>();
-    final shares = _shares;
-    final name = _isManual ? _manualNameCtrl.text.trim() : _procedure.name;
-    final pct = _isManual ? _manualPct : _procedure.percentage;
 
-    final treatment = Treatment(
-      id: _editing?.id ?? provider.newTreatmentId(),
-      patientId: widget.patientId,
-      procedureId: _procedure.id,
-      procedureName: name,
-      model: _procedure.model,
-      teeth: _teeth.toList()..sort(),
-      totalPrice: _price,
-      labFee: _procedure.requiresLabFee ? _labFee : 0,
-      percentage: pct,
-      netAmount: _procedure.netAmount,
-      doctorShare: shares.doctor,
-      clinicShare: shares.clinic,
-      appointmentDate: _date,
-      note: _noteCtrl.text.trim(),
-      isPaid: _isPaid,
-      photos: _photos,
-      createdAt: _editing?.createdAt ?? DateTime.now(),
-    );
+    for (final e in _entries) {
+      final shares = _sharesOf(e);
+      final name = _isManual(e) ? e.manualNameCtrl.text.trim() : e.procedure.name;
+      final pct = _isManual(e) ? _manualPctOf(e) : e.procedure.percentage;
+      final price = _priceOf(e);
+      final collected = _collectedOf(e);
+      final doctorPaid = collected >= price - 0.005 ? e.doctorPaid : false;
 
-    await provider.saveTreatment(treatment);
+      final treatment = Treatment(
+        id: e.existingId ?? provider.newTreatmentId(),
+        patientId: widget.patientId,
+        procedureId: e.procedure.id,
+        procedureName: name,
+        model: e.procedure.model,
+        teeth: e.teeth.toList()..sort(),
+        totalPrice: price,
+        labFee: e.procedure.requiresLabFee ? _labFeeOf(e) : 0,
+        percentage: pct,
+        netAmount: e.procedure.netAmount,
+        doctorShare: shares.doctor,
+        clinicShare: shares.clinic,
+        appointmentDate: _date,
+        note: e.noteCtrl.text.trim(),
+        installmentCount: e.installments,
+        collectedAmount: collected,
+        doctorPaid: doctorPaid,
+        photos: e.photos,
+        createdAt: e.createdAt ?? DateTime.now(),
+      );
+      await provider.saveTreatment(treatment);
+    }
+
     if (mounted) Navigator.of(context).pop();
   }
 
