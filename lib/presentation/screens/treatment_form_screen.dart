@@ -455,7 +455,8 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         ),
         const SizedBox(height: 10),
         Container(
-          padding: const EdgeInsets.all(10),
+          // Diş şemasına kart içindeki tüm genişliği ver: yatay iç padding yok.
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
           decoration: BoxDecoration(
             color: AppColors.surfaceAlt,
             borderRadius: BorderRadius.circular(14),

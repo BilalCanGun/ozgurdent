@@ -149,11 +149,12 @@ class _ToothChartState extends State<ToothChart> {
     final count = right.length + left.length;
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 3.0;
+        const gap = 1.0;
         const dividerW = 12.0;
-        // Tam sığacak diş genişliği; üst sınır 60 (geniş ekranda daha büyük).
+        // Genişliğe tam sığacak diş boyutu: kullanılabilir alanı sonuna kadar
+        // doldur (üst sınır yok, yalnızca çok darda küçülmeyi engelle).
         final fit = (constraints.maxWidth - dividerW) / count - gap;
-        final toothW = fit.clamp(10.0, 60.0).toDouble();
+        final toothW = fit < 10.0 ? 10.0 : fit;
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -184,7 +185,7 @@ class _ToothChartState extends State<ToothChart> {
         duration: const Duration(milliseconds: 160),
         width: w,
         margin: EdgeInsets.symmetric(horizontal: gap / 2),
-        padding: EdgeInsets.symmetric(vertical: w * 0.14, horizontal: 2),
+        padding: EdgeInsets.symmetric(vertical: w * 0.14),
         decoration: BoxDecoration(
           gradient: selected ? AppColors.primaryGradient : null,
           color: selected ? null : AppColors.surface,
@@ -207,8 +208,8 @@ class _ToothChartState extends State<ToothChart> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ToothModelIcon(
-                number: number, selected: selected, size: w * 0.82),
-            SizedBox(height: w * 0.08),
+                number: number, selected: selected, size: w * 0.96),
+            SizedBox(height: w * 0.06),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
