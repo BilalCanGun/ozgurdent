@@ -40,9 +40,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
             children: [
-              const PageHeader(
+              PageHeader(
                 title: 'İstatistik',
-                subtitle: 'Kazanç ve işlem özeti',
+                subtitle: provider.activeClinic != null
+                    ? '${provider.activeClinic!.name} • Kazanç ve işlem özeti'
+                    : 'Kazanç ve işlem özeti',
               ),
               const SizedBox(height: 16),
               _rangeSelector(),
@@ -173,13 +175,31 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             onPressed: () => _shift(-1),
           ),
           Expanded(
-            child: Center(
-              child: Text(
-                _periodLabel(),
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: _pickPeriod,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _periodLabel(),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(Icons.arrow_drop_down,
+                        color: AppColors.textSecondary, size: 20),
+                  ],
                 ),
               ),
             ),
@@ -242,6 +262,162 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           break;
       }
     });
+  }
+
+  /// Seçili döneme uygun bir seçici açar: gün→takvim, hafta→gün(hafta),
+  /// ay→ay ızgarası, yıl→yıl listesi.
+  Future<void> _pickPeriod() async {
+    final now = DateTime.now();
+    switch (_range) {
+      case StatsRange.day:
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: _ref.isAfter(now) ? now : _ref,
+          firstDate: DateTime(2020),
+          lastDate: now,
+          locale: const Locale('tr', 'TR'),
+          helpText: 'Gün seç',
+        );
+        if (picked != null) setState(() => _ref = picked);
+        break;
+      case StatsRange.week:
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: _ref.isAfter(now) ? now : _ref,
+          firstDate: DateTime(2020),
+          lastDate: now,
+          locale: const Locale('tr', 'TR'),
+          helpText: 'Haftadan bir gün seç',
+        );
+        if (picked != null) setState(() => _ref = picked);
+        break;
+      case StatsRange.month:
+        final picked = await _pickMonth(now);
+        if (picked != null) setState(() => _ref = picked);
+        break;
+      case StatsRange.year:
+        final picked = await _pickYear(now);
+        if (picked != null) setState(() => _ref = DateTime(picked, 1, 1));
+        break;
+    }
+  }
+
+  /// Ay ızgarası (yıl gezinmeli) — gelecekteki aylar seçilemez.
+  Future<DateTime?> _pickMonth(DateTime now) {
+    int year = _ref.year;
+    const months = [
+      'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
+      'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'
+    ];
+    return showDialog<DateTime>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          title: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () => setLocal(() => year--),
+              ),
+              Expanded(
+                child: Text(
+                  '$year',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed:
+                    year < now.year ? () => setLocal(() => year++) : null,
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 300,
+            child: GridView.count(
+              shrinkWrap: true,
+              crossAxisCount: 3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 2.1,
+              children: [
+                for (int m = 1; m <= 12; m++)
+                  _monthCell(ctx, year, m, months[m - 1], now),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _monthCell(
+      BuildContext ctx, int year, int month, String label, DateTime now) {
+    final disabled =
+        year > now.year || (year == now.year && month > now.month);
+    final selected = year == _ref.year && month == _ref.month;
+    return Material(
+      color: selected ? AppColors.primary : AppColors.surfaceAlt,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: disabled
+            ? null
+            : () => Navigator.pop(ctx, DateTime(year, month, 1)),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: selected
+                  ? Colors.white
+                  : (disabled
+                      ? AppColors.textSecondary.withValues(alpha: 0.4)
+                      : AppColors.textPrimary),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Yıl listesi — 2020..bu yıl.
+  Future<int?> _pickYear(DateTime now) {
+    final years = [for (int y = now.year; y >= 2020; y--) y];
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Yıl seç'),
+        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        content: SizedBox(
+          width: 260,
+          height: 320,
+          child: ListView(
+            children: [
+              for (final y in years)
+                ListTile(
+                  title: Text(
+                    '$y',
+                    style: TextStyle(
+                      fontWeight:
+                          y == _ref.year ? FontWeight.w800 : FontWeight.w600,
+                      color: y == _ref.year
+                          ? AppColors.primary
+                          : AppColors.textPrimary,
+                    ),
+                  ),
+                  trailing: y == _ref.year
+                      ? Icon(Icons.check, color: AppColors.primary)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, y),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // İşlem dilimleri için canlı renk paleti.

@@ -99,7 +99,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
           maxCrossAxisExtent: 420,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          mainAxisExtent: 108,
+          mainAxisExtent: 132,
         ),
         itemCount: patients.length,
         itemBuilder: (_, i) => _patientCard(context, provider, patients[i]),
@@ -118,6 +118,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
     final total = provider.patientTotal(p.id);
     final outstanding = provider.patientOutstanding(p.id);
     final count = provider.patientTreatmentCount(p.id);
+    final awaitingPayout = provider.patientAwaitingPayout(p.id);
 
     return AppCard(
       onTap: () => Navigator.of(context).push(
@@ -182,6 +183,10 @@ class _PatientsScreenState extends State<PatientsScreen> {
                 _tag('Tahsil edildi', AppColors.success)
               else
                 _tag('İşlem yok', AppColors.textSecondary),
+              if (awaitingPayout > 0) ...[
+                const SizedBox(height: 4),
+                _tag('Payın bekliyor', AppColors.violet),
+              ],
             ],
           ),
         ],

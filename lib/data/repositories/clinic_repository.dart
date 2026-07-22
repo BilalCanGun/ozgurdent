@@ -1,5 +1,6 @@
 import '../local/hive_boxes.dart';
 import '../local/photo_storage.dart';
+import '../models/clinic.dart';
 import '../models/patient.dart';
 import '../models/procedure_type.dart';
 import '../models/treatment.dart';
@@ -54,6 +55,33 @@ class ClinicRepository {
   Future<void> _deletePhotos(Treatment t) async {
     for (final path in t.photos) {
       await PhotoStorage.delete(path);
+    }
+  }
+
+  // --- Klinikler ---
+  List<Clinic> getClinics() {
+    return HiveBoxes.clinicsBox.values
+        .map((e) => Clinic.fromMap(Map<dynamic, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<void> saveClinic(Clinic clinic) async {
+    await HiveBoxes.clinicsBox.put(clinic.id, clinic.toMap());
+  }
+
+  /// Kliniği ve ona ait tüm işlemleri (+fotoğraflar) ve işlem tanımlarını siler.
+  Future<void> deleteClinic(String clinicId) async {
+    await HiveBoxes.clinicsBox.delete(clinicId);
+    final ownedTx =
+        getTreatments().where((t) => t.clinicId == clinicId).toList();
+    for (final t in ownedTx) {
+      await _deletePhotos(t);
+      await HiveBoxes.treatmentsBox.delete(t.id);
+    }
+    final ownedProc =
+        getProcedures().where((p) => p.clinicId == clinicId).toList();
+    for (final p in ownedProc) {
+      await HiveBoxes.proceduresBox.delete(p.id);
     }
   }
 

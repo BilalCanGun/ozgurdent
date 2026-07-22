@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/utils/formatters.dart';
 import '../models/patient.dart';
+import '../models/procedure_type.dart';
 import '../models/treatment.dart';
 
 /// İşlem/randevu verilerini biçimlendirilmiş bir .xlsx dosyasına aktarır.
@@ -33,6 +34,30 @@ class ExportService {
     'Klinik Tahsil',
     'Doktor Aldı',
     'Not',
+    'Kredi Kartı Kom.',
+  ];
+
+  /// Detaylı rapor başlıkları (filtreli dışa aktarma için — daha çok sütun).
+  static const _detailedHeaders = [
+    'Tarih',
+    'Saat',
+    'Hasta',
+    'Telefon',
+    'İşlem',
+    'Model',
+    'Dişler',
+    'Toplam Ücret',
+    'Kredi Kartı Kom. %',
+    'Kredi Kartı Kom. ₺',
+    'Tahsil Edilen',
+    'Kalan',
+    'Doktor Payı',
+    'Klinik Payı',
+    'Taksit',
+    'Durum',
+    'Klinik Tahsil',
+    'Doktor Aldı',
+    'Not',
   ];
 
   /// Verilen kayıtlardan bir Excel dosyası üretir ve paylaşım/kaydetme
@@ -45,7 +70,6 @@ class ExportService {
   }) async {
     final patientById = {for (final p in patients) p.id: p};
 
-    // Hafif tablo (yalnızca String/num) ana thread'de hazırlanır.
     final sorted = [...treatments]
       ..sort((a, b) => b.appointmentDate.compareTo(a.appointmentDate));
 
@@ -68,18 +92,83 @@ class ExportService {
         t.clinicCollected ? 'Evet' : 'Hayır',
         t.doctorPaid ? 'Evet' : 'Hayır',
         t.note,
+        t.cardCommissionRate > 0 ? t.cardCommissionAmount : '',
       ]);
     }
 
-    // Ağır kodlama arka plan isolate'inde.
-    final bytes = await compute(_encodeExcel, rows);
+    return _buildAndShare(rows, 'İşlemler', 'OzgurDent');
+  }
 
-    // Paylaşım için geçici (staging) dizine yaz; kullanıcı hedefi seçecek.
+  /// Detaylı, filtrelenmiş rapor: kullanıcı istatistik/filtre ekranından
+  /// seçtiği kayıtları zengin sütunlarla dışa aktarır.
+  static Future<String> exportDetailed({
+    required List<Treatment> treatments,
+    required List<Patient> patients,
+    Rect? sharePositionOrigin,
+  }) async {
+    final patientById = {for (final p in patients) p.id: p};
+
+    final sorted = [...treatments]
+      ..sort((a, b) => b.appointmentDate.compareTo(a.appointmentDate));
+
+    final rows = <List<Object?>>[_detailedHeaders];
+    for (final t in sorted) {
+      final p = patientById[t.patientId];
+      rows.add([
+        Fmt.date(t.appointmentDate),
+        Fmt.time(t.appointmentDate),
+        p?.name ?? '-',
+        p?.phone ?? '',
+        t.procedureName,
+        t.model.label,
+        t.teeth.join(', '),
+        t.totalPrice,
+        t.cardCommissionRate > 0 ? t.cardCommissionRate * 100 : '',
+        t.cardCommissionRate > 0 ? t.cardCommissionAmount : '',
+        t.collectedAmount,
+        t.remaining,
+        t.doctorShare,
+        t.clinicShare,
+        t.installmentCount,
+        _stageLabel(t),
+        t.clinicCollected ? 'Evet' : 'Hayır',
+        t.doctorPaid ? 'Evet' : 'Hayır',
+        t.note,
+      ]);
+    }
+
+    return _buildAndShare(rows, 'Rapor', 'OzgurDent_Rapor',
+        sharePositionOrigin: sharePositionOrigin);
+  }
+
+  static String _stageLabel(Treatment t) {
+    switch (t.stage) {
+      case PaymentStage.pending:
+        return 'Bekliyor';
+      case PaymentStage.partial:
+        return 'Kısmi';
+      case PaymentStage.clinicCollected:
+        return 'Payın bekliyor';
+      case PaymentStage.settled:
+        return 'Tamamlandı';
+    }
+  }
+
+  /// Ortak: satırlardan .xlsx üretir, geçici dizine yazar ve paylaşım açar.
+  static Future<String> _buildAndShare(
+    List<List<Object?>> rows,
+    String sheetName,
+    String filePrefix, {
+    Rect? sharePositionOrigin,
+  }) async {
+    final bytes =
+        await compute(_encodeExcel, {'sheet': sheetName, 'rows': rows});
+
     final dir = await getTemporaryDirectory();
-    final path = '${dir.path}${Platform.pathSeparator}OzgurDent_${_stamp()}.xlsx';
+    final path =
+        '${dir.path}${Platform.pathSeparator}${filePrefix}_${_stamp()}.xlsx';
     await File(path).writeAsBytes(bytes, flush: true);
 
-    // Paylaş / kaydet penceresini aç (iOS "Dosyalara Kaydet", Android hedef seçimi).
     await Share.shareXFiles(
       [
         XFile(
@@ -105,17 +194,32 @@ class ExportService {
 
 /// Arka plan isolate'inde çalışır: satır verisinden .xlsx bayt dizisi üretir.
 /// İlk satır başlık kabul edilir; hücre tipi çalışma zamanı tipinden çözülür.
-List<int> _encodeExcel(List<List<Object?>> rows) {
-  const widths = [14.0, 8.0, 20.0, 16.0, 20.0, 16.0, 14.0, 14.0, 12.0, 13.0,
-    13.0, 8.0, 13.0, 12.0, 30.0];
+/// Sütun genişlikleri içeriğe göre otomatik hesaplanır.
+List<int> _encodeExcel(Map<String, Object?> payload) {
+  final sheetName = payload['sheet'] as String;
+  final rows = (payload['rows'] as List).cast<List<Object?>>();
+
+  // İçeriğe göre otomatik sütun genişliği (8..42 aralığında).
+  var colCount = 0;
+  for (final row in rows) {
+    if (row.length > colCount) colCount = row.length;
+  }
+  final widths = List<double>.filled(colCount, 8);
+  for (final row in rows) {
+    for (var c = 0; c < row.length; c++) {
+      final len = (row[c]?.toString() ?? '').length + 2;
+      final w = len.clamp(8, 42).toDouble();
+      if (w > widths[c]) widths[c] = w;
+    }
+  }
 
   final excel = Excel.createExcel();
   final defaultSheet = excel.getDefaultSheet();
-  final sheet = excel['İşlemler'];
-  if (defaultSheet != null && defaultSheet != 'İşlemler') {
+  final sheet = excel[sheetName];
+  if (defaultSheet != null && defaultSheet != sheetName) {
     excel.delete(defaultSheet);
   }
-  excel.setDefaultSheet('İşlemler');
+  excel.setDefaultSheet(sheetName);
 
   final headerStyle = CellStyle(
     bold: true,

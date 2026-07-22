@@ -21,6 +21,9 @@ class Treatment {
   final String id;
   final String patientId;
 
+  /// Bu işlemin ait olduğu klinik.
+  final String clinicId;
+
   /// Katalog işleminin id'si (dolgu, implant, manuel...).
   final String procedureId;
 
@@ -43,6 +46,10 @@ class Treatment {
 
   /// Net model için hekime kalan sabit tutar.
   final double netAmount;
+
+  /// Kredi kartı komisyon oranı (0-1). 0 = komisyon yok.
+  /// Komisyon önce toplam ücretten düşülür, kalan tutar paylara ayrılır.
+  final double cardCommissionRate;
 
   /// Hesaplanmış paylar (kayıt anında sabitlenir).
   final double doctorShare;
@@ -71,6 +78,7 @@ class Treatment {
   const Treatment({
     required this.id,
     required this.patientId,
+    this.clinicId = '',
     required this.procedureId,
     required this.procedureName,
     required this.model,
@@ -79,6 +87,7 @@ class Treatment {
     required this.labFee,
     required this.percentage,
     required this.netAmount,
+    this.cardCommissionRate = 0,
     required this.doctorShare,
     required this.clinicShare,
     required this.appointmentDate,
@@ -91,6 +100,9 @@ class Treatment {
   });
 
   // --- Türetilmiş ödeme durumu ---
+
+  /// Kredi kartı komisyon tutarı (toplam ücretten düşülen).
+  double get cardCommissionAmount => totalPrice * cardCommissionRate;
 
   /// Klinik ödemenin tamamını hastadan tahsil etti mi.
   bool get clinicCollected => collectedAmount >= totalPrice - 0.005;
@@ -120,6 +132,7 @@ class Treatment {
   }
 
   Treatment copyWith({
+    String? clinicId,
     String? procedureId,
     String? procedureName,
     PricingModel? model,
@@ -128,6 +141,7 @@ class Treatment {
     double? labFee,
     double? percentage,
     double? netAmount,
+    double? cardCommissionRate,
     double? doctorShare,
     double? clinicShare,
     DateTime? appointmentDate,
@@ -140,6 +154,7 @@ class Treatment {
     return Treatment(
       id: id,
       patientId: patientId,
+      clinicId: clinicId ?? this.clinicId,
       procedureId: procedureId ?? this.procedureId,
       procedureName: procedureName ?? this.procedureName,
       model: model ?? this.model,
@@ -148,6 +163,7 @@ class Treatment {
       labFee: labFee ?? this.labFee,
       percentage: percentage ?? this.percentage,
       netAmount: netAmount ?? this.netAmount,
+      cardCommissionRate: cardCommissionRate ?? this.cardCommissionRate,
       doctorShare: doctorShare ?? this.doctorShare,
       clinicShare: clinicShare ?? this.clinicShare,
       appointmentDate: appointmentDate ?? this.appointmentDate,
@@ -163,6 +179,7 @@ class Treatment {
   Map<String, dynamic> toMap() => {
         'id': id,
         'patientId': patientId,
+        'clinicId': clinicId,
         'procedureId': procedureId,
         'procedureName': procedureName,
         'model': model.name,
@@ -171,6 +188,7 @@ class Treatment {
         'labFee': labFee,
         'percentage': percentage,
         'netAmount': netAmount,
+        'cardCommissionRate': cardCommissionRate,
         'doctorShare': doctorShare,
         'clinicShare': clinicShare,
         'appointmentDate': appointmentDate.toIso8601String(),
@@ -194,6 +212,7 @@ class Treatment {
     return Treatment(
       id: map['id'] as String,
       patientId: map['patientId'] as String,
+      clinicId: map['clinicId'] as String? ?? '',
       procedureId: map['procedureId'] as String,
       procedureName: map['procedureName'] as String,
       model: PricingModelX.fromKey(map['model'] as String),
@@ -202,6 +221,8 @@ class Treatment {
       labFee: (map['labFee'] as num?)?.toDouble() ?? 0,
       percentage: (map['percentage'] as num?)?.toDouble() ?? 0,
       netAmount: (map['netAmount'] as num?)?.toDouble() ?? 0,
+      cardCommissionRate:
+          (map['cardCommissionRate'] as num?)?.toDouble() ?? 0,
       doctorShare: (map['doctorShare'] as num).toDouble(),
       clinicShare: (map['clinicShare'] as num).toDouble(),
       appointmentDate: DateTime.parse(map['appointmentDate'] as String),

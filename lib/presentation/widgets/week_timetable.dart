@@ -18,6 +18,9 @@ class WeekTimetable extends StatelessWidget {
   final Widget? headerAction;
   final ValueChanged<Treatment> onTapAppointment;
 
+  /// Boş bir gün+saat hücresine dokunulduğunda o tarih+saatle çağrılır.
+  final ValueChanged<DateTime>? onTapSlot;
+
   const WeekTimetable({
     super.key,
     required this.weekStart,
@@ -26,18 +29,24 @@ class WeekTimetable extends StatelessWidget {
     required this.onPrevWeek,
     required this.onNextWeek,
     required this.onTapAppointment,
+    this.onTapSlot,
     this.headerAction,
   });
 
   static const _dayAbbr = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
   static const double _gutter = 38;
 
+  /// Randevu olmasa da her zaman gösterilen saat aralığı (klinik mesaisi).
+  static const int _defaultMinHour = 8;
+  static const int _defaultMaxHour = 21;
+
   @override
   Widget build(BuildContext context) {
     final days = [for (int i = 0; i < 7; i++) weekStart.add(Duration(days: i))];
-    // Her gün+saat için randevuları grupla ve saat aralığını belirle.
+    // Her gün+saat için randevuları grupla. Saat aralığı her zaman tüm mesai
+    // saatlerini kapsar; mesai dışına düşen randevu varsa aralık genişletilir.
     final byDayHour = <int, Map<int, List<Treatment>>>{};
-    var minHour = 23, maxHour = 0, total = 0;
+    var minHour = _defaultMinHour, maxHour = _defaultMaxHour, total = 0;
     for (var d = 0; d < 7; d++) {
       final appts = appointmentsOf(days[d]);
       total += appts.length;
@@ -47,13 +56,6 @@ class WeekTimetable extends StatelessWidget {
         if (h > maxHour) maxHour = h;
         ((byDayHour[d] ??= {})[h] ??= []).add(t);
       }
-    }
-    if (total == 0) {
-      minHour = 9;
-      maxHour = 20;
-    } else {
-      // En az birkaç saatlik pencere göster.
-      if (maxHour < minHour + 2) maxHour = minHour + 2;
     }
     final hours = [for (int h = minHour; h <= maxHour; h++) h];
     final weekEnd = weekStart.add(const Duration(days: 6));
@@ -67,7 +69,7 @@ class WeekTimetable extends StatelessWidget {
           _dayHeaderRow(days),
           const SizedBox(height: 4),
           Divider(height: 12, color: AppColors.border),
-          for (final h in hours) _hourRow(h, byDayHour),
+          for (final h in hours) _hourRow(h, days, byDayHour),
         ],
       ),
     );
@@ -157,7 +159,8 @@ class WeekTimetable extends StatelessWidget {
     );
   }
 
-  Widget _hourRow(int hour, Map<int, Map<int, List<Treatment>>> byDayHour) {
+  Widget _hourRow(int hour, List<DateTime> days,
+      Map<int, Map<int, List<Treatment>>> byDayHour) {
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -179,25 +182,32 @@ class WeekTimetable extends StatelessWidget {
           ),
           for (var d = 0; d < 7; d++)
             Expanded(
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 34),
-                decoration: BoxDecoration(
-                  border: Border(
-                    left: BorderSide(
-                      color: AppColors.border.withValues(alpha: 0.6),
-                    ),
-                    bottom: BorderSide(
-                      color: AppColors.border.withValues(alpha: 0.4),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTapSlot == null
+                    ? null
+                    : () => onTapSlot!(DateTime(
+                        days[d].year, days[d].month, days[d].day, hour)),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 34),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(
+                        color: AppColors.border.withValues(alpha: 0.6),
+                      ),
+                      bottom: BorderSide(
+                        color: AppColors.border.withValues(alpha: 0.4),
+                      ),
                     ),
                   ),
-                ),
-                padding: const EdgeInsets.all(2),
-                child: Column(
-                  children: [
-                    for (final t
-                        in (byDayHour[d]?[hour] ?? const <Treatment>[]))
-                      _block(t),
-                  ],
+                  padding: const EdgeInsets.all(2),
+                  child: Column(
+                    children: [
+                      for (final t
+                          in (byDayHour[d]?[hour] ?? const <Treatment>[]))
+                        _block(t),
+                    ],
+                  ),
                 ),
               ),
             ),

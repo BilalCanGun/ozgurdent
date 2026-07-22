@@ -34,6 +34,10 @@ extension PricingModelX on PricingModel {
 class ProcedureType {
   final String id;
   final String name;
+
+  /// Bu işlem tanımının ait olduğu klinik (boş = yerleşik/klinik-bağımsız).
+  final String clinicId;
+
   final PricingModel model;
 
   /// [PricingModel.percentage] veya [PricingModel.percentageAfterLab] için oran (0-1).
@@ -55,6 +59,7 @@ class ProcedureType {
   const ProcedureType({
     required this.id,
     required this.name,
+    this.clinicId = '',
     required this.model,
     this.percentage = 0.30,
     this.netAmount = 0,
@@ -64,7 +69,9 @@ class ProcedureType {
   });
 
   ProcedureType copyWith({
+    String? id,
     String? name,
+    String? clinicId,
     PricingModel? model,
     double? percentage,
     double? netAmount,
@@ -72,8 +79,9 @@ class ProcedureType {
     bool? requiresLabFee,
   }) =>
       ProcedureType(
-        id: id,
+        id: id ?? this.id,
         name: name ?? this.name,
+        clinicId: clinicId ?? this.clinicId,
         model: model ?? this.model,
         percentage: percentage ?? this.percentage,
         netAmount: netAmount ?? this.netAmount,
@@ -85,6 +93,7 @@ class ProcedureType {
   Map<String, dynamic> toMap() => {
         'id': id,
         'name': name,
+        'clinicId': clinicId,
         'model': model.name,
         'percentage': percentage,
         'netAmount': netAmount,
@@ -96,6 +105,7 @@ class ProcedureType {
   factory ProcedureType.fromMap(Map<dynamic, dynamic> map) => ProcedureType(
         id: map['id'] as String,
         name: map['name'] as String,
+        clinicId: map['clinicId'] as String? ?? '',
         model: PricingModelX.fromKey(map['model'] as String),
         percentage: (map['percentage'] as num?)?.toDouble() ?? 0.30,
         netAmount: (map['netAmount'] as num?)?.toDouble() ?? 0,
@@ -105,29 +115,37 @@ class ProcedureType {
       );
 
   /// Verilen toplam ücret üzerinden hekim ve klinik paylarını hesaplar.
+  ///
+  /// [cardCommission] varsa (kredi kartı komisyonu) önce toplam ücretten
+  /// düşülür, kalan tutar hekim/klinik olarak paylaştırılır. Böylece komisyon
+  /// her iki tarafı orantılı etkiler ve seçilen 3 modelle birlikte çalışır.
   PaymentShares computeShares({
     required double totalPrice,
     double labFee = 0,
+    double cardCommission = 0,
     double? overridePercentage,
     double? overrideNetAmount,
   }) {
+    // Paylaşılacak taban: komisyon düşülmüş tutar.
+    final double base =
+        (totalPrice - cardCommission).clamp(0, double.infinity).toDouble();
     double doctor;
     switch (model) {
       case PricingModel.percentage:
         final pct = overridePercentage ?? percentage;
-        doctor = totalPrice * pct;
+        doctor = base * pct;
         break;
       case PricingModel.net:
         doctor = overrideNetAmount ?? netAmount;
         break;
       case PricingModel.percentageAfterLab:
         final pct = overridePercentage ?? percentage;
-        doctor = (totalPrice - labFee).clamp(0, double.infinity) * pct;
+        doctor = (base - labFee).clamp(0, double.infinity).toDouble() * pct;
         break;
     }
-    if (doctor > totalPrice) doctor = totalPrice;
+    if (doctor > base) doctor = base;
     if (doctor < 0) doctor = 0;
-    final clinic = totalPrice - doctor;
+    final clinic = base - doctor;
     return PaymentShares(doctor: doctor, clinic: clinic);
   }
 }

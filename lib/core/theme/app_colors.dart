@@ -53,6 +53,24 @@ class AppColors {
   static Color shadow = const Color(0x1A2563EB);
   static Color shadowSoft = const Color(0x0F1E293B);
 
+  /// Kliniklere atanan vurgu renkleri (colorIndex ile eşleşir).
+  static List<Color> get clinicPalette => [
+        primary,
+        teal,
+        violet,
+        pink,
+        amber,
+        success,
+        accent,
+        danger,
+      ];
+
+  /// Verilen indekse karşılık gelen klinik rengi (paletin içinde döner).
+  static Color clinicColor(int index) {
+    final p = clinicPalette;
+    return p[index % p.length];
+  }
+
   /// Ana degrade (başlık / dashboard kartları için).
   static LinearGradient primaryGradient = const LinearGradient(
     begin: Alignment.topLeft,

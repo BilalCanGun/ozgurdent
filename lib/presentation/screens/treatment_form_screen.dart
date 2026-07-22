@@ -33,6 +33,8 @@ class _Entry {
   final manualPctCtrl = TextEditingController(text: '30');
   final noteCtrl = TextEditingController();
   final collectedCtrl = TextEditingController();
+  final cardPctCtrl = TextEditingController();
+  bool cardOn = false;
   _PayTab payTab = _PayTab.full;
   _CollectMode collectMode = _CollectMode.pending;
   int installments = 1;
@@ -59,6 +61,7 @@ class _Entry {
     manualPctCtrl.dispose();
     noteCtrl.dispose();
     collectedCtrl.dispose();
+    cardPctCtrl.dispose();
   }
 }
 
@@ -68,10 +71,15 @@ class TreatmentFormScreen extends StatefulWidget {
   final String patientId;
   final String? treatmentId;
 
+  /// Takvimde bir saate dokunularak açıldıysa, randevu tarih+saati önceden
+  /// bu değere ayarlanır (yeni işlem modunda).
+  final DateTime? initialDate;
+
   const TreatmentFormScreen({
     super.key,
     required this.patientId,
     this.treatmentId,
+    this.initialDate,
   });
 
   @override
@@ -133,6 +141,10 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         e.noteCtrl.text = t.note;
         e.installments = t.installmentCount;
         e.doctorPaid = t.doctorPaid;
+        if (t.cardCommissionRate > 0) {
+          e.cardOn = true;
+          e.cardPctCtrl.text = _trimNum(t.cardCommissionRate * 100);
+        }
         e.photos = [...t.photos];
         e.originalPhotos = [...t.photos];
         if (t.clinicCollected) {
@@ -150,6 +162,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
       }
       _entries.add(e);
     } else {
+      if (widget.initialDate != null) _date = widget.initialDate!;
       _entries.add(_Entry(_catalog.first));
     }
   }
@@ -183,9 +196,20 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
 
   bool _isManual(_Entry e) => e.procedure.id == ProcedureCatalog.manual.id;
 
+  /// Kredi kartı komisyon oranı (0-1). Kapalıysa 0.
+  double _cardRateOf(_Entry e) {
+    if (!e.cardOn) return 0;
+    final pct =
+        (double.tryParse(e.cardPctCtrl.text.replaceAll(',', '.')) ?? 0) / 100;
+    return pct.clamp(0, 1).toDouble();
+  }
+
+  double _cardAmountOf(_Entry e) => _priceOf(e) * _cardRateOf(e);
+
   PaymentShares _sharesOf(_Entry e) => e.procedure.computeShares(
         totalPrice: _priceOf(e),
         labFee: _labFeeOf(e),
+        cardCommission: _cardAmountOf(e),
         overridePercentage: _isManual(e) ? _manualPctOf(e) : null,
       );
 
@@ -395,6 +419,8 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 14),
+          _cardCommissionSection(e),
           const SizedBox(height: 14),
           _sharePreview(shares),
           const SizedBox(height: 16),
@@ -646,6 +672,100 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         }
       });
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // KREDİ KARTI KOMİSYONU (işlem başına, seçili modelle birlikte çalışır)
+  // ---------------------------------------------------------------------------
+  Widget _cardCommissionSection(_Entry e) {
+    final amount = _cardAmountOf(e);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.credit_card, size: 18, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Kredi kartı komisyonu',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Switch(
+                value: e.cardOn,
+                activeColor: AppColors.primary,
+                onChanged: (v) => setState(() => e.cardOn = v),
+              ),
+            ],
+          ),
+          if (e.cardOn) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: e.cardPctCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Komisyon oranı',
+                      prefixIcon: Icon(Icons.percent),
+                      suffixText: '%',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Düşülecek',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '−${Fmt.money(amount)}',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.danger,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Komisyon önce toplamdan düşülür, kalan tutar paya bölünür.',
+              style:
+                  TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _sharePreview(PaymentShares shares) {
@@ -1320,6 +1440,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
       final treatment = Treatment(
         id: e.existingId ?? provider.newTreatmentId(),
         patientId: widget.patientId,
+        clinicId: _editing?.clinicId ?? provider.activeClinicId,
         procedureId: e.procedure.id,
         procedureName: name,
         model: e.procedure.model,
@@ -1328,6 +1449,7 @@ class _TreatmentFormScreenState extends State<TreatmentFormScreen> {
         labFee: e.procedure.requiresLabFee ? _labFeeOf(e) : 0,
         percentage: pct,
         netAmount: e.procedure.netAmount,
+        cardCommissionRate: _cardRateOf(e),
         doctorShare: shares.doctor,
         clinicShare: shares.clinic,
         appointmentDate: _date,

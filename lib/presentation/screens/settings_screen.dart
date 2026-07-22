@@ -14,6 +14,8 @@ import '../providers/clinic_provider.dart';
 import '../providers/notification_controller.dart';
 import '../providers/theme_controller.dart';
 import '../widgets/app_card.dart';
+import 'clinics_screen.dart';
+import 'report_export_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -34,6 +36,10 @@ class SettingsScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(18, 8, 18, 40),
             children: [
+              _sectionLabel('Klinikler'),
+              const SizedBox(height: 10),
+              _clinicsCard(context, provider),
+              const SizedBox(height: 24),
               _sectionLabel('Görünüm'),
               const SizedBox(height: 10),
               _darkModeCard(theme),
@@ -47,6 +53,8 @@ class SettingsScreen extends StatelessWidget {
               _ExportCard(),
               const SizedBox(height: 10),
               _ImportCard(),
+              const SizedBox(height: 10),
+              _reportCard(context),
               const SizedBox(height: 24),
               Row(
                 children: [
@@ -60,8 +68,9 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'İşlem ekle, sil veya fiyatlandırma kurallarını düzenle '
-                '(yüzde, net tutar, teknisyen bedeli, varsayılan ücret).',
+                '${provider.activeClinic?.name ?? 'Aktif klinik'} kliniği için. '
+                'Her klinik kendi yüzdelerine sahiptir. İşlem ekle, sil veya '
+                'fiyatlandırma kurallarını düzenle.',
                 style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
@@ -73,6 +82,96 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
       ),
+      ),
+    );
+  }
+
+  Widget _clinicsCard(BuildContext context, ClinicProvider provider) {
+    final clinic = provider.activeClinic;
+    final color = clinic == null
+        ? AppColors.primary
+        : AppColors.clinicColor(clinic.colorIndex);
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ClinicsScreen()),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.local_hospital, color: color),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Klinikleri yönet',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  'Aktif: ${clinic?.name ?? '-'} • ${provider.clinics.length} klinik',
+                  style:
+                      TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: AppColors.textSecondary),
+        ],
+      ),
+    );
+  }
+
+  Widget _reportCard(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ReportExportScreen()),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: AppColors.violet.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.filter_alt_outlined, color: AppColors.violet),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Detaylı Excel raporu',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  'Tarih, işlem ve duruma göre filtrele, kendi raporunu çıkar',
+                  style:
+                      TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: AppColors.textSecondary),
+        ],
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/constants/procedure_catalog.dart';
 import '../../data/local/demo_seeder.dart';
 import '../../data/local/hive_boxes.dart';
+import '../../data/models/clinic.dart';
 import '../../data/models/patient.dart';
 import '../../data/models/procedure_type.dart';
 import '../../data/models/treatment.dart';
@@ -36,7 +37,12 @@ class PeriodStats {
 }
 
 /// Bir hasta için önceden hesaplanmış özetler (liste ekranında O(1) erişim).
-typedef PatientAggregate = ({double total, double outstanding, int count});
+typedef PatientAggregate = ({
+  double total,
+  double outstanding,
+  int count,
+  double awaitingPayout, // klinik tahsil etti, doktor payı bekliyor (toplam)
+});
 
 enum StatsRange { day, week, month, year }
 
@@ -52,11 +58,15 @@ class ClinicProvider extends ChangeNotifier {
   final _uuid = const Uuid();
 
   List<Patient> _patients = [];
-  List<Treatment> _treatments = [];
-  List<ProcedureType> _procedures = [];
+  List<Treatment> _treatments = []; // TÜM klinikler (depolama).
+  List<ProcedureType> _procedures = []; // TÜM klinikler (depolama).
+  List<Clinic> _clinics = [];
+  String _activeClinicId = '';
   bool _loaded = false;
 
   // --- İndeksler (mutasyonlarda yeniden kurulur) ---
+  /// Aktif kliniğe ait işlemler (sorgular bunun üzerinden çalışır).
+  List<Treatment> _active = const [];
   final Map<String, Patient> _patientIndex = {};
   final Map<String, List<Treatment>> _byPatient = {};
   final Map<String, PatientAggregate> _agg = {};
@@ -67,13 +77,64 @@ class ClinicProvider extends ChangeNotifier {
 
   Future<void> load() async {
     await _maybeSeedDemo();
-    await _ensureProcedures();
     _patients = _repo.getPatients()..sort(_patientSort);
     _treatments = _repo.getTreatments();
     _procedures = _repo.getProcedures();
+    await _ensureClinicsAndMigrate();
     _rebuildIndexes();
     _loaded = true;
     notifyListeners();
+  }
+
+  /// En az bir klinik olmasını sağlar; eski (kliniksiz) işlem/işlem-tanımı
+  /// kayıtlarını varsayılan kliniğe taşır; aktif kliniği belirler.
+  Future<void> _ensureClinicsAndMigrate() async {
+    _clinics = _repo.getClinics()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    if (_clinics.isEmpty) {
+      final def = Clinic(
+        id: _uuid.v4(),
+        name: 'Ana Klinik',
+        colorIndex: 0,
+        createdAt: DateTime.now(),
+      );
+      await _repo.saveClinic(def);
+      _clinics = [def];
+    }
+    final defaultId = _clinics.first.id;
+
+    // İşlem tanımları: hiç yoksa varsayılan katalogla tohumla; kliniksiz
+    // (eski) kayıtları varsayılan kliniğe bağla.
+    if (_procedures.isEmpty) {
+      for (final p in ProcedureCatalog.all) {
+        await _repo.saveProcedure(p.copyWith(clinicId: defaultId));
+      }
+      _procedures = _repo.getProcedures();
+    } else {
+      final orphans =
+          _procedures.where((p) => p.clinicId.isEmpty).toList();
+      if (orphans.isNotEmpty) {
+        for (final p in orphans) {
+          await _repo.saveProcedure(p.copyWith(clinicId: defaultId));
+        }
+        _procedures = _repo.getProcedures();
+      }
+    }
+
+    // İşlemler: kliniksiz (eski) kayıtları varsayılan kliniğe bağla.
+    final orphanTx = _treatments.where((t) => t.clinicId.isEmpty).toList();
+    if (orphanTx.isNotEmpty) {
+      for (final t in orphanTx) {
+        await _repo.saveTreatment(t.copyWith(clinicId: defaultId));
+      }
+      _treatments = _repo.getTreatments();
+    }
+
+    final stored = _repo.getSetting<String>('active_clinic_id');
+    _activeClinicId = (stored != null && _clinics.any((c) => c.id == stored))
+        ? stored
+        : defaultId;
   }
 
   /// Türkçe-duyarlı hasta sıralaması (İ/ı, Ş, Ç, Ö, Ü doğru yerlerde).
@@ -84,31 +145,41 @@ class ClinicProvider extends ChangeNotifier {
   /// İndeksleri (hasta haritası, hasta bazlı işlem listeleri, özetler ve
   /// doktor payı bekleyenler) tek geçişte yeniden kurar.
   void _rebuildIndexes() {
+    // Aktif kliniğe göre işlemleri süz — tüm sorgular bu küme üzerinden çalışır.
+    _active = _treatments
+        .where((t) => t.clinicId == _activeClinicId)
+        .toList(growable: false);
+
     _patientIndex.clear();
     for (final p in _patients) {
       _patientIndex[p.id] = p;
     }
 
     _byPatient.clear();
-    for (final t in _treatments) {
+    for (final t in _active) {
       (_byPatient[t.patientId] ??= <Treatment>[]).add(t);
     }
     _agg.clear();
     for (final entry in _byPatient.entries) {
       final list = entry.value
         ..sort((a, b) => b.appointmentDate.compareTo(a.appointmentDate));
-      double total = 0, outstanding = 0;
+      double total = 0, outstanding = 0, awaitingPayout = 0;
       for (final t in list) {
         total += t.totalPrice;
         outstanding += t.remaining;
+        if (t.awaitingDoctorPayout) awaitingPayout += t.doctorShare;
       }
-      _agg[entry.key] =
-          (total: total, outstanding: outstanding, count: list.length);
+      _agg[entry.key] = (
+        total: total,
+        outstanding: outstanding,
+        count: list.length,
+        awaitingPayout: awaitingPayout,
+      );
     }
 
     final awaiting = <Treatment>[];
     double awaitingTotal = 0;
-    for (final t in _treatments) {
+    for (final t in _active) {
       if (t.awaitingDoctorPayout) {
         awaiting.add(t);
         awaitingTotal += t.doctorShare;
@@ -131,12 +202,75 @@ class ClinicProvider extends ChangeNotifier {
     }
   }
 
-  /// İşlem kataloğunu ilk açılışta yerleşik listeden tohumlar.
-  Future<void> _ensureProcedures() async {
-    if (HiveBoxes.proceduresBox.isNotEmpty) return;
-    for (final p in ProcedureCatalog.all) {
-      await _repo.saveProcedure(p);
+  // ---------------------------------------------------------------------------
+  // KLİNİKLER
+  // ---------------------------------------------------------------------------
+  List<Clinic> get clinics => List.unmodifiable(_clinics);
+  String get activeClinicId => _activeClinicId;
+
+  Clinic? get activeClinic {
+    for (final c in _clinics) {
+      if (c.id == _activeClinicId) return c;
     }
+    return _clinics.isEmpty ? null : _clinics.first;
+  }
+
+  /// Aktif kliniği değiştirir; tüm sorgular yeni kliniğe göre yeniden kurulur.
+  Future<void> setActiveClinic(String id) async {
+    if (id == _activeClinicId) return;
+    if (!_clinics.any((c) => c.id == id)) return;
+    _activeClinicId = id;
+    await _repo.setSetting('active_clinic_id', id);
+    _rebuildIndexes();
+    notifyListeners();
+  }
+
+  /// Yeni klinik ekler ve varsayılan işlem kataloğuyla (kliniğe özel
+  /// kopyalar) tohumlar.
+  Future<Clinic> addClinic(String name, {int? colorIndex}) async {
+    final clinic = Clinic(
+      id: _uuid.v4(),
+      name: name.trim(),
+      colorIndex: colorIndex ?? _clinics.length,
+      createdAt: DateTime.now(),
+    );
+    await _repo.saveClinic(clinic);
+    _clinics.add(clinic);
+    // Varsayılan katalogdan bu kliniğe özel kopyalar üret.
+    for (final p in ProcedureCatalog.all) {
+      final proc = p.copyWith(id: _uuid.v4(), clinicId: clinic.id);
+      await _repo.saveProcedure(proc);
+      _procedures.add(proc);
+    }
+    notifyListeners();
+    return clinic;
+  }
+
+  /// Bir kliniğe ait toplam işlem sayısı (tüm zamanlar).
+  int clinicTreatmentCount(String id) =>
+      _treatments.where((t) => t.clinicId == id).length;
+
+  Future<void> updateClinic(Clinic clinic) async {
+    await _repo.saveClinic(clinic);
+    final i = _clinics.indexWhere((c) => c.id == clinic.id);
+    if (i != -1) _clinics[i] = clinic;
+    notifyListeners();
+  }
+
+  /// Kliniği ve ona ait işlemleri/işlem tanımlarını siler.
+  /// En az bir klinik her zaman kalır.
+  Future<void> deleteClinic(String id) async {
+    if (_clinics.length <= 1) return;
+    await _repo.deleteClinic(id);
+    _clinics.removeWhere((c) => c.id == id);
+    _treatments.removeWhere((t) => t.clinicId == id);
+    _procedures.removeWhere((p) => p.clinicId == id);
+    if (_activeClinicId == id) {
+      _activeClinicId = _clinics.first.id;
+      await _repo.setSetting('active_clinic_id', _activeClinicId);
+    }
+    _rebuildIndexes();
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
@@ -196,7 +330,9 @@ class ClinicProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   // İŞLEM TANIMLARI (KATALOG)
   // ---------------------------------------------------------------------------
-  List<ProcedureType> get procedures => List.unmodifiable(_procedures);
+  /// Aktif kliniğin işlem kataloğu (kliniğe özel yüzdelerle).
+  List<ProcedureType> get procedures => List.unmodifiable(
+      _procedures.where((p) => p.clinicId == _activeClinicId));
 
   ProcedureType? procedureById(String id) {
     for (final p in _procedures) {
@@ -218,6 +354,7 @@ class ClinicProvider extends ChangeNotifier {
     final proc = ProcedureType(
       id: _uuid.v4(),
       name: name.trim(),
+      clinicId: _activeClinicId,
       model: model,
       percentage: percentage,
       netAmount: netAmount,
@@ -246,9 +383,10 @@ class ClinicProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   // İŞLEMLER
   // ---------------------------------------------------------------------------
-  List<Treatment> get treatments => List.unmodifiable(_treatments);
-  int get treatmentCount => _treatments.length;
-  bool get hasTreatments => _treatments.isNotEmpty;
+  /// Aktif kliniğin işlemleri.
+  List<Treatment> get treatments => List.unmodifiable(_active);
+  int get treatmentCount => _active.length;
+  bool get hasTreatments => _active.isNotEmpty;
 
   /// Hastanın işlemleri (tarihe göre azalan), önceden indekslenmiş — O(1).
   List<Treatment> treatmentsForPatient(String patientId) =>
@@ -257,12 +395,16 @@ class ClinicProvider extends ChangeNotifier {
   String newTreatmentId() => _uuid.v4();
 
   Future<void> saveTreatment(Treatment treatment) async {
-    await _repo.saveTreatment(treatment);
-    final i = _treatments.indexWhere((t) => t.id == treatment.id);
+    // Klinik bilgisi yoksa aktif kliniğe bağla.
+    final t = treatment.clinicId.isEmpty
+        ? treatment.copyWith(clinicId: _activeClinicId)
+        : treatment;
+    await _repo.saveTreatment(t);
+    final i = _treatments.indexWhere((x) => x.id == t.id);
     if (i == -1) {
-      _treatments.add(treatment);
+      _treatments.add(t);
     } else {
-      _treatments[i] = treatment;
+      _treatments[i] = t;
     }
     _rebuildIndexes();
     notifyListeners();
@@ -377,6 +519,7 @@ class ClinicProvider extends ChangeNotifier {
       final t = Treatment(
         id: _uuid.v4(),
         patientId: patient.id,
+        clinicId: _activeClinicId,
         procedureId: matched.id,
         procedureName: procName,
         model: matched.model,
@@ -444,6 +587,10 @@ class ClinicProvider extends ChangeNotifier {
       _agg[patientId]?.outstanding ?? 0;
   int patientTreatmentCount(String patientId) => _agg[patientId]?.count ?? 0;
 
+  /// Bu hasta için klinik tahsil etti ama doktor payı henüz alınmadıysa toplam.
+  double patientAwaitingPayout(String patientId) =>
+      _agg[patientId]?.awaitingPayout ?? 0;
+
   // ---------------------------------------------------------------------------
   // RANDEVULAR / TAKVİM
   // ---------------------------------------------------------------------------
@@ -452,7 +599,7 @@ class ClinicProvider extends ChangeNotifier {
 
   List<Treatment> appointmentsOn(DateTime day) {
     final list =
-        _treatments.where((t) => _sameDay(t.appointmentDate, day)).toList();
+        _active.where((t) => _sameDay(t.appointmentDate, day)).toList();
     list.sort((a, b) => a.appointmentDate.compareTo(b.appointmentDate));
     return list;
   }
@@ -462,7 +609,7 @@ class ClinicProvider extends ChangeNotifier {
   /// Bir ay içindeki her gün için randevu sayısı (takvim noktaları için).
   Map<int, int> appointmentCountsByDay(DateTime month) {
     final map = <int, int>{};
-    for (final t in _treatments) {
+    for (final t in _active) {
       final d = t.appointmentDate;
       if (d.year == month.year && d.month == month.month) {
         map[d.day] = (map[d.day] ?? 0) + 1;
@@ -503,7 +650,7 @@ class ClinicProvider extends ChangeNotifier {
   }
 
   List<Treatment> treatmentsInPeriod(DateTime ref, StatsRange range) {
-    return _treatments
+    return _active
         .where((t) => _inRange(t.appointmentDate, ref, range))
         .toList()
       ..sort((a, b) => b.appointmentDate.compareTo(a.appointmentDate));
@@ -523,7 +670,7 @@ class ClinicProvider extends ChangeNotifier {
     final breakdown = <String, ({int count, double total, double doctor})>{};
     var count = 0;
 
-    for (final t in _treatments) {
+    for (final t in _active) {
       if (!_inRange(t.appointmentDate, ref, range)) continue;
       count++;
       total += t.totalPrice;

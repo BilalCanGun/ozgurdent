@@ -4,18 +4,22 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/responsive.dart';
+import '../../data/models/patient.dart';
 import '../../data/models/treatment.dart';
 import '../providers/clinic_provider.dart';
 import '../providers/theme_controller.dart';
 import '../widgets/app_card.dart';
 import '../widgets/appointment_calendar.dart';
+import '../widgets/clinic_sheets.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/gif_refresh_indicator.dart';
 import '../widgets/payment_editor.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/treatment_tile.dart';
 import 'patient_detail_screen.dart';
 import 'patient_form_screen.dart';
 import 'settings_screen.dart';
+import 'treatment_form_screen.dart';
 import '../widgets/week_timetable.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -29,7 +33,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late DateTime _focusedMonth;
   late DateTime _selectedDay;
   late DateTime _weekStart;
-  bool _weekMode = false;
+  bool _weekMode = true;
 
   @override
   void initState() {
@@ -64,10 +68,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: ConstrainedBox(
           constraints:
               BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
-            children: [
-              _greeting(context, now),
+          child: GifRefreshIndicator(
+            onRefresh: () => provider.load(),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
+              children: [
+              _greeting(context, now, provider),
               const SizedBox(height: 20),
               GridView(
                 shrinkWrap: true,
@@ -143,6 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onNextWeek: () => setState(() =>
                       _weekStart = _weekStart.add(const Duration(days: 7))),
                   onTapAppointment: (t) => _openPatient(context, t.patientId),
+                  onTapSlot: (slot) => _addAppointmentAt(context, slot),
                   headerAction: _modeToggle(),
                 )
               else ...[
@@ -215,6 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       )),
               ],
             ],
+            ),
           ),
         ),
       ),
@@ -402,7 +411,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _greeting(BuildContext context, DateTime now) {
+  Widget _greeting(BuildContext context, DateTime now, ClinicProvider provider) {
     return AppCard(
       gradient: AppColors.primaryGradient,
       padding: const EdgeInsets.all(20),
@@ -436,7 +445,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Text(
             '${Fmt.weekday(now)}, ${Fmt.date(now)}',
             style: TextStyle(
@@ -447,7 +456,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Merhaba Özgür 👋',
+            'Merhaba Dt. Özgür 👋',
             style: TextStyle(
               color: Colors.white,
               fontSize: 24,
@@ -462,7 +471,92 @@ class _DashboardScreenState extends State<DashboardScreen> {
               fontSize: 14,
             ),
           ),
+          const SizedBox(height: 16),
+          _clinicSwitcher(context, provider),
         ],
+      ),
+    );
+  }
+
+  /// Selam kartı içindeki cam görünümlü klinik değiştirme çubuğu.
+  Widget _clinicSwitcher(BuildContext context, ClinicProvider provider) {
+    final clinic = provider.activeClinic;
+    final multi = provider.clinics.length > 1;
+    return GestureDetector(
+      onTap: () => showClinicSwitcher(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(Icons.local_hospital,
+                  color: AppColors.primary, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Aktif Klinik',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    clinic?.name ?? 'Klinik',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(multi ? Icons.unfold_more : Icons.add,
+                      color: Colors.white, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    multi ? 'Değiştir' : 'Ekle',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -499,5 +593,219 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (_) => PatientDetailScreen(patientId: patientId),
       ),
     );
+  }
+
+  /// Takvimde boş bir saate dokunulduğunda: önce hasta seç (veya yeni ekle),
+  /// sonra o tarih+saate işlem/randevu ekleme ekranını aç.
+  Future<void> _addAppointmentAt(BuildContext context, DateTime slot) async {
+    final picked = await showModalBottomSheet<_PatientPick>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => _PatientPickerSheet(slot: slot),
+    );
+    if (picked == null || !context.mounted) return;
+
+    Patient? patient = picked.patient;
+    if (picked.isNew) {
+      patient = await Navigator.of(context).push<Patient>(
+        MaterialPageRoute(builder: (_) => const PatientFormScreen()),
+      );
+    }
+    if (patient == null || !context.mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TreatmentFormScreen(
+          patientId: patient!.id,
+          initialDate: slot,
+        ),
+      ),
+    );
+  }
+}
+
+/// Takvim slotu için hasta seçimi sonucu: mevcut hasta ya da "yeni hasta".
+class _PatientPick {
+  final Patient? patient;
+  final bool isNew;
+  const _PatientPick.existing(this.patient) : isNew = false;
+  const _PatientPick.create()
+      : patient = null,
+        isNew = true;
+}
+
+/// Bir randevu slotu için hasta seçme alt sayfası (arama + yeni hasta).
+class _PatientPickerSheet extends StatefulWidget {
+  final DateTime slot;
+  const _PatientPickerSheet({required this.slot});
+
+  @override
+  State<_PatientPickerSheet> createState() => _PatientPickerSheetState();
+}
+
+class _PatientPickerSheetState extends State<_PatientPickerSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<ClinicProvider>();
+    final patients = provider.searchPatients(_query);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.75,
+        maxChildSize: 0.92,
+        builder: (ctx, controller) => Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.event_available, color: AppColors.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Randevu için hasta seç',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          '${Fmt.date(widget.slot)} • ${Fmt.time(widget.slot)}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+              child: TextField(
+                autofocus: false,
+                onChanged: (v) => setState(() => _query = v),
+                decoration: const InputDecoration(
+                  hintText: 'İsim veya telefon ara...',
+                  prefixIcon: Icon(Icons.search),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () =>
+                      Navigator.pop(context, const _PatientPick.create()),
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: const Text('Yeni hasta ekle'),
+                ),
+              ),
+            ),
+            Expanded(
+              child: patients.isEmpty
+                  ? const EmptyState(
+                      icon: Icons.people_outline,
+                      title: 'Hasta bulunamadı',
+                      message: 'Yukarıdan yeni hasta ekleyebilirsin.',
+                    )
+                  : ListView.separated(
+                      controller: controller,
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                      itemCount: patients.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) {
+                        final p = patients[i];
+                        return AppCard(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          onTap: () => Navigator.pop(
+                              context, _PatientPick.existing(p)),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 20,
+                                backgroundColor: AppColors.surfaceAlt,
+                                child: Text(
+                                  _initials(p.name),
+                                  style: TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      p.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    if (p.phone.isNotEmpty)
+                                      Text(
+                                        p.phone,
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right,
+                                  color: AppColors.textSecondary),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts.first[0] + parts.last[0]).toUpperCase();
   }
 }
